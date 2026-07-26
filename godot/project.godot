@@ -1,0 +1,22 @@
+; 《血狼》Godot 4 工程（迁移自 PixiJS 版，见 docs/GODOT_MIGRATION.md）
+config_version=5
+
+[application]
+
+config/name="BloodWolf 血狼"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.2")
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+environment/defaults/default_clear_color=Color(0.04, 0.02, 0.03, 1)
