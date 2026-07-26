@@ -2,7 +2,7 @@ import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pi
 import { Net } from '../net/net'
 import {
   BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, MAPS, MapId, PASSIVES,
-  RESONANCE_DESC, TAG_NAME, TagId, WeaponId, moonMul,
+  RESONANCE_DESC, SHOP, TAG_NAME, TagId, WeaponId, moonMul,
 } from '../core/config'
 import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
@@ -15,6 +15,7 @@ import { Textures, makeGroundTexture, makeTextures } from './textures'
 import { FusedWeapon, Weapon, createEvolvedWeapon, createWeapon } from './weapons'
 import { getFrames, getTex } from './assets'
 import { RunSave, clearRun, loadRun, saveRun } from './persist'
+import { showShopUI } from './shop'
 
 type GameState = 'running' | 'levelup' | 'end'
 
@@ -50,6 +51,11 @@ export class Game {
   state: GameState = 'running'
   time = 0
   kills = 0
+  gold = 0
+  shopBought = 0
+  private shopTimer = 0
+  coins: Gem[] = []
+  private coinPool: Gem[] = []
   combo = 0
   private comboTimer = 0
   totalDamage = 0
@@ -189,6 +195,8 @@ export class Game {
   restoreRun(d: RunSave): void {
     this.time = d.time
     this.kills = d.kills
+    this.gold = d.gold ?? 0
+    this.shopBought = d.shopBought ?? 0
     this.totalDamage = d.totalDamage
     this.maxHit = d.maxHit
     this.bossIdx = d.bossIdx
@@ -562,6 +570,8 @@ export class Game {
     this.updateEnemies(dt)
     this.updateArrows(dt)
     this.updateGems(dt)
+    this.updateCoins(dt)
+    this.updateShop(dt)
     this.updateBuildings(dt)
     this.updateChests(dt)
     this.updateBullets(dt)
@@ -935,6 +945,7 @@ export class Game {
     }
     this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + CFG.rage.energyPerKill)
     this.dropGem(e.x, e.y, Math.round(e.xp * (1 + (this.time / 60) * CFG.gemValueGrowthPerMin)))
+    this.dropCoin(e)
 
     // 嗜血共鸣 III：击杀回血
     if (this.player.tags.blood >= 3) this.player.heal(1)
@@ -953,6 +964,64 @@ export class Game {
         this.dropGem(e.x + Math.cos(a) * 50, e.y + Math.sin(a) * 50, 15)
       }
     }
+  }
+
+  // ------------------------------------------------------------ 金币与魔女商店（GDD 10.3）
+
+  /** 概率掉金币；精英/Boss 必掉大额 */
+  private dropCoin(e: Enemy): void {
+    let value = 0
+    if (e.kind === 'elite') value = SHOP.eliteGold
+    else if (e.kind === 'boss') value = SHOP.bossGold
+    else if (Math.random() < SHOP.dropChance) value = 1 + Math.floor(this.time / 120)
+    if (value <= 0) return
+    if (this.charId === 'laojin') value = Math.round(value * 1.5) // 老金：财运亨通
+    if (this.coins.length >= 80) {
+      this.coins[Math.floor(Math.random() * this.coins.length)].value += value
+      return
+    }
+    const c = this.coinPool.pop() ?? new Gem(this.tex.coin)
+    c.sprite.texture = this.tex.coin
+    c.init(e.x + rand(-14, 14), e.y + rand(-14, 14), value)
+    this.world.addChildAt(c.sprite, 0)
+    this.coins.push(c)
+  }
+
+  private updateCoins(dt: number): void {
+    const p = this.player
+    const range2 = p.pickupRange ** 2
+    for (let i = this.coins.length - 1; i >= 0; i--) {
+      const c = this.coins[i]
+      c.sprite.scale.set(1 + 0.15 * Math.sin(this.time * 7 + c.x * 0.07))
+      const d2 = dist2(c.x, c.y, p.x, p.y)
+      if (!c.attracted && d2 < range2) c.attracted = true
+      if (c.attracted) {
+        const d = Math.sqrt(d2) || 1
+        c.x += ((p.x - c.x) / d) * 520 * dt
+        c.y += ((p.y - c.y) / d) * 520 * dt
+        c.sprite.position.set(c.x, c.y)
+        if (d < 24) {
+          this.gold += c.value
+          this.world.removeChild(c.sprite)
+          c.sprite.visible = false
+          this.coins.splice(i, 1)
+          if (this.coinPool.length < 40) this.coinPool.push(c)
+        }
+      }
+    }
+  }
+
+  /** 每 SHOP.interval 秒营业一次；单机暂停选购，联机不暂停（同三选一规则） */
+  private updateShop(dt: number): void {
+    this.shopTimer += dt
+    if (this.shopTimer < SHOP.interval || this.state !== 'running') return
+    this.shopTimer = 0
+    this.state = 'levelup' // 复用选卡状态：单机暂停 + 接触免疫
+    this.announce('🧙 魔女商店营业中', false, true)
+    showShopUI(this, () => {
+      this.state = 'running'
+      // 商店期间攒的升级接着弹
+    })
   }
 
   // ------------------------------------------------------------ 经验宝石
@@ -1206,7 +1275,7 @@ export class Game {
   private updateHUD(): void {
     const p = this.player
     this.el.timer.textContent = fmtTime(this.time)
-    this.el.kills.textContent = `击杀 ${this.kills}` + (this.combo >= 10 ? ` · ${this.combo}连杀` : '')
+    this.el.kills.textContent = `击杀 ${this.kills} · 🪙${this.gold}` + (this.combo >= 10 ? ` · ${this.combo}连杀` : '')
     this.el.hpBar.style.width = `${clamp((p.hp / p.maxHp) * 100, 0, 100)}%`
     this.el.hpText.textContent = `${Math.ceil(Math.max(0, p.hp))} / ${p.maxHp}`
     this.el.xpBar.style.width = `${clamp((p.xp / p.xpNeed()) * 100, 0, 100)}%`

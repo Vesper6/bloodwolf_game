@@ -150,6 +150,14 @@ button:hover { filter: brightness(1.25); }
 .card.r-purple .c-name { color: #c98aff; }
 .card.r-gold   .c-name { color: #ffce6b; }
 
+/* ---------- 魔女商店 ---------- */
+#shop h2 { color: #ff6ab0; font-size: 26px; letter-spacing: 4px; margin-bottom: 22px; text-shadow: 0 0 14px rgba(255,106,176,.5); }
+#shop-gold { color: #ffd24a; margin-left: 14px; }
+#shop-items { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 18px; }
+#shop-items .card { min-height: 170px; width: 175px; }
+#shop-items .card.poor { opacity: .45; cursor: not-allowed; }
+#shop-items .card.poor:hover { transform: none; }
+
 /* ---------- 结算 ---------- */
 #end-title { font-size: 52px; color: #ff4444; letter-spacing: 10px; text-shadow: 0 0 24px rgba(255,40,40,.6); }
 #end-title.victory { color: #ffce6b; text-shadow: 0 0 24px rgba(255,190,60,.7); }

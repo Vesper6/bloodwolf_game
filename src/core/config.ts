@@ -199,6 +199,23 @@ export const MOON_MAX = 30
 /** 第 n 层怪物属性倍率 */
 export const moonMul = (lv: number) => Math.pow(1.25, lv - 1)
 
+/** ---------- 魔女商店（GDD 10.3）与金币经济 ---------- */
+export const SHOP = {
+  /** 商店营业间隔（秒） */
+  interval: 150,
+  /** 词条按稀有度基价 */
+  priceByRarity: [18, 32, 55, 95],
+  /** 每次购买后全店涨价系数 */
+  priceGrowth: 1.35,
+  healCost: 25,
+  rerollCost: 12,
+  weaponCost: 40,
+  /** 金币掉落概率与基础价值 */
+  dropChance: 0.28,
+  eliteGold: 12,
+  bossGold: 40,
+}
+
 /** ---------- 血脉天赋（局外成长，GDD 11章） ---------- */
 export interface TalentDef { name: string; desc: (lv: number) => string; max: number; cost: (lv: number) => number }
 

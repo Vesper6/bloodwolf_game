@@ -12,6 +12,8 @@ export interface RunSave {
   mapId: MapId
   time: number
   kills: number
+  gold: number
+  shopBought: number
   totalDamage: number
   maxHit: number
   bossIdx: number
@@ -34,7 +36,8 @@ export function saveRun(g: Game): void {
   const data: RunSave = {
     ts: Date.now(),
     charId: g.charId, moonLv: g.moonLv, mapId: g.mapId,
-    time: g.time, kills: g.kills, totalDamage: g.totalDamage, maxHit: g.maxHit,
+    time: g.time, kills: g.kills, gold: g.gold, shopBought: g.shopBought,
+    totalDamage: g.totalDamage, maxHit: g.maxHit,
     bossIdx: g.bossIdxPublic, victoryAnnounced: g.victoryAnnouncedPublic,
     player: {
       hp: p.hp, maxHp: p.maxHp, level: p.level, xp: p.xp, energy: p.energy,

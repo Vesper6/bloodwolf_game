@@ -10,6 +10,7 @@ export interface Textures {
   arrow: Texture
   orb: Texture
   chest: Texture
+  coin: Texture
   shadow: Texture
   enemy: Record<EnemyKind, Texture>
   enemyFrames: Record<EnemyKind, Texture[]>
@@ -113,6 +114,12 @@ export function makeTextures(app: Application): Textures {
     enemy[kind] = enemyFrames[kind][0]
   }
 
+  // 金币
+  const coin = new Graphics()
+  coin.lineStyle(1.5, 0x8a6a10)
+  coin.beginFill(0xffd24a); coin.drawCircle(0, 0, 7); coin.endFill()
+  coin.beginFill(0xc89a20); coin.drawCircle(0, 0, 4); coin.endFill()
+
   // 血月宝箱
   const cg = new Graphics()
   cg.beginFill(0xd8264a, 0.25); cg.drawCircle(0, 0, 26); cg.endFill()
@@ -151,6 +158,7 @@ export function makeTextures(app: Application): Textures {
     arrow: gen(ag),
     orb: gen(og),
     chest: gen(cg),
+    coin: gen(coin),
     shadow: gen(shg),
     enemy,
     enemyFrames,
