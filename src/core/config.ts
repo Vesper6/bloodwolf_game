@@ -38,6 +38,27 @@ export const CFG = {
   bossTimes: [300, 600] as number[],
 }
 
+/** ---------- Boss 阵容（GDD 10.2，单机专属机制） ---------- */
+export type BossKind = 'garno' | 'morga' | 'fenrir'
+
+export interface BossDef {
+  time: number
+  name: string
+  kind: BossKind
+  hpMul: number
+  tint: number
+  desc: string
+}
+
+export const BOSSES: BossDef[] = [
+  { time: 300, name: '血月魔王 · 加尔诺', kind: 'garno', hpMul: 2, tint: 0xffffff,
+    desc: '环形弹幕 + 蓄力冲锋' },
+  { time: 600, name: '瘟疫之主 · 莫尔加', kind: 'morga', hpMul: 4, tint: 0x7aff8a,
+    desc: '螺旋毒弹 + 召唤蝠群' },
+  { time: 780, name: '永夜狼王 · 弗恩里', kind: 'fenrir', hpMul: 7, tint: 0xff9a9a,
+    desc: '半血狂暴：弹幕与移速全面提升' },
+]
+
 export type EnemyKind = 'bat' | 'skeleton' | 'boar' | 'elite' | 'boss'
 
 export interface EnemyDef {

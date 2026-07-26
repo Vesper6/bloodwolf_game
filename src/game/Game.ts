@@ -2,7 +2,7 @@ import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pi
 import { Net } from '../net/net'
 import {
   BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, MAPS, MapId, PASSIVES,
-  RESONANCE_DESC, SHOP, TAG_NAME, TagId, WeaponId, moonMul,
+  BOSSES, BossKind, RESONANCE_DESC, SHOP, TAG_NAME, TagId, WeaponId, moonMul,
 } from '../core/config'
 import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
@@ -47,6 +47,15 @@ export class Game {
   private bulletPool: Bullet[] = []
   private bossRingTimer = 0
   private bossAimTimer = 0
+  private bossKindCur: BossKind | null = null
+  private chargeTimer = 0
+  private dashT = 0
+  private dashVx = 0
+  private dashVy = 0
+  private spiralAngle = 0
+  private spiralTimer = 0
+  private summonTimer = 0
+  private enraged = false
 
   state: GameState = 'running'
   time = 0
@@ -630,15 +639,21 @@ export class Game {
       }
     }
 
-    // Boss
-    if (this.bossIdx < CFG.bossTimes.length && this.time >= CFG.bossTimes[this.bossIdx]) {
+    // Boss（单机：三场专属机制Boss战）
+    if (this.bossIdx < BOSSES.length && this.time >= BOSSES[this.bossIdx].time) {
+      const def = BOSSES[this.bossIdx]
       this.bossIdx++
       const b = this.spawnEnemy('boss')
       if (b) {
-        b.maxHp = b.hp = b.hp * this.bossIdx * 2
+        b.maxHp = b.hp = b.hp * def.hpMul
+        b.sprite.tint = def.tint
         this.boss = b
-        this.el.bossName.textContent = this.bossIdx === 1 ? '血月魔王 · 加尔诺' : '永夜狼王 · 弗恩里'
+        this.bossKindCur = def.kind
+        this.chargeTimer = 0; this.spiralTimer = 0; this.summonTimer = 0
+        this.dashT = 0; this.enraged = false
+        this.el.bossName.textContent = `${def.name}（${def.desc}）`
         this.el.bossWrap.classList.remove('hidden')
+        this.announce(`⚠ ${def.name} 现身！`, true)
         this.flash()
       }
     }
@@ -753,20 +768,72 @@ export class Game {
     const boss = this.boss && this.boss.alive ? this.boss : null
     if (boss) {
       const dmg = 14 * (1 + (this.moonLv - 1) * 0.15)
-      this.bossRingTimer += dt
-      if (this.bossRingTimer >= 2.4) {
-        this.bossRingTimer = 0
-        const offset = Math.random() * Math.PI * 2
-        for (let i = 0; i < 14; i++) {
-          this.spawnBullet(boss.x, boss.y, offset + (i / 14) * Math.PI * 2, 180, dmg)
+      const kind = this.bossKindCur
+      // 弗恩里：半血狂暴（一次性）
+      const frenzyMul = this.enraged ? 0.6 : 1
+      if (kind === 'fenrir' && !this.enraged && boss.hp < boss.maxHp * 0.5) {
+        this.enraged = true
+        boss.speed *= 1.4
+        boss.sprite.tint = 0xff3030
+        this.flash()
+        this.announce('⚠ 永夜狼王进入狂暴状态！', true)
+      }
+      if (kind === 'morga') {
+        // 螺旋毒弹
+        this.spiralTimer += dt
+        if (this.spiralTimer >= 0.11) {
+          this.spiralTimer = 0
+          this.spiralAngle += 0.42
+          for (let arm = 0; arm < 3; arm++) {
+            this.spawnBullet(boss.x, boss.y, this.spiralAngle + (arm / 3) * Math.PI * 2, 150, dmg)
+          }
+        }
+        // 召唤蝠群
+        this.summonTimer += dt
+        if (this.summonTimer >= 10 && !this.net) {
+          this.summonTimer = 0
+          for (let i = 0; i < 5; i++) {
+            const add = this.spawnEnemy('bat')
+            if (add) { add.x = boss.x + rand(-60, 60); add.y = boss.y + rand(-60, 60) }
+          }
+          this.announce('瘟疫之主召唤了蝠群！')
+        }
+      } else {
+        // 环形弹幕（加尔诺/弗恩里/联机默认）
+        this.bossRingTimer += dt
+        if (this.bossRingTimer >= 2.4 * frenzyMul) {
+          this.bossRingTimer = 0
+          const offset = Math.random() * Math.PI * 2
+          for (let i = 0; i < 14; i++) {
+            this.spawnBullet(boss.x, boss.y, offset + (i / 14) * Math.PI * 2, 180, dmg)
+          }
+        }
+        this.bossAimTimer += dt
+        if (this.bossAimTimer >= 4.5 * frenzyMul) {
+          this.bossAimTimer = 0
+          const aim = Math.atan2(p.y - boss.y, p.x - boss.x)
+          for (let i = -2; i <= 2; i++) {
+            this.spawnBullet(boss.x, boss.y, aim + i * 0.18, 300, dmg)
+          }
         }
       }
-      this.bossAimTimer += dt
-      if (this.bossAimTimer >= 4.5) {
-        this.bossAimTimer = 0
-        const aim = Math.atan2(p.y - boss.y, p.x - boss.x)
-        for (let i = -2; i <= 2; i++) {
-          this.spawnBullet(boss.x, boss.y, aim + i * 0.18, 300, dmg)
+      // 加尔诺：蓄力冲锋（单机）
+      if (kind === 'garno' && !this.net) {
+        this.chargeTimer += dt
+        if (this.chargeTimer >= 8 && this.dashT <= 0) {
+          this.chargeTimer = 0
+          const a = Math.atan2(p.y - boss.y, p.x - boss.x)
+          this.dashVx = Math.cos(a) * 620
+          this.dashVy = Math.sin(a) * 620
+          this.dashT = 0.7
+          boss.sprite.tint = 0xffe08a
+          this.announce('⚠ 加尔诺蓄力冲锋！', true)
+        }
+        if (this.dashT > 0) {
+          this.dashT -= dt
+          boss.x += this.dashVx * dt
+          boss.y += this.dashVy * dt
+          if (this.dashT <= 0) boss.sprite.tint = 0xffffff
         }
       }
     }
