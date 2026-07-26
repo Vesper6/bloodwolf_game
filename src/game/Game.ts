@@ -7,12 +7,12 @@ import {
 import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
 import { Building } from './buildings'
-import { Arrow, Chest, Enemy, Gem } from './entities'
+import { Arrow, Bullet, Chest, Enemy, Gem } from './entities'
 import { Fx } from './fx'
 import { generateOptions, hideLevelUpUI, showLevelUpUI } from './levelup'
 import { Player } from './player'
 import { Textures, makeGroundTexture, makeTextures } from './textures'
-import { Weapon, createEvolvedWeapon, createWeapon } from './weapons'
+import { FusedWeapon, Weapon, createEvolvedWeapon, createWeapon } from './weapons'
 
 type GameState = 'running' | 'levelup' | 'end'
 
@@ -37,9 +37,13 @@ export class Game {
   gems: Gem[] = []
   buildings: Building[] = []
   chests: Chest[] = []
+  bullets: Bullet[] = []
   private enemyPool: Enemy[] = []
   private arrowPool: Arrow[] = []
   private gemPool: Gem[] = []
+  private bulletPool: Bullet[] = []
+  private bossRingTimer = 0
+  private bossAimTimer = 0
 
   state: GameState = 'running'
   time = 0
@@ -452,6 +456,7 @@ export class Game {
     this.updateGems(dt)
     this.updateBuildings(dt)
     this.updateChests(dt)
+    this.updateBullets(dt)
     this.fx.update(dt)
     this.updateCamera()
     this.updateHUD()
@@ -554,10 +559,13 @@ export class Game {
         e.y += (e.ty - e.y) * Math.min(1, dt * 8)
         d = Math.hypot(p.x - e.x, p.y - e.y) || 1
       } else {
+        // 血月狂暴（无尽模式）：全怪提速40%变红
+        const frenzy = this.victoryAnnounced ? 1.4 : 1
         const dx = p.x - e.x, dy = p.y - e.y
         d = Math.hypot(dx, dy) || 1
-        e.x += (dx / d) * e.speed * dt
-        e.y += (dy / d) * e.speed * dt
+        e.x += (dx / d) * e.speed * frenzy * dt
+        e.y += (dy / d) * e.speed * frenzy * dt
+        if (this.victoryAnnounced) e.sprite.tint = 0xff8080
       }
       e.sprite.position.set(e.x, e.y)
 
@@ -584,6 +592,65 @@ export class Game {
     e.sprite.visible = false
     this.enemies.splice(idx, 1)
     if (this.enemyPool.length < 100) this.enemyPool.push(e)
+  }
+
+  // ------------------------------------------------------------ Boss 弹幕（战魂铭人式）
+
+  private updateBullets(dt: number): void {
+    const p = this.player
+    // Boss 存活时发射弹幕（单机与联机通用，基于本地 Boss 位置）
+    const boss = this.boss && this.boss.alive ? this.boss : null
+    if (boss) {
+      const dmg = 14 * (1 + (this.moonLv - 1) * 0.15)
+      this.bossRingTimer += dt
+      if (this.bossRingTimer >= 2.4) {
+        this.bossRingTimer = 0
+        const offset = Math.random() * Math.PI * 2
+        for (let i = 0; i < 14; i++) {
+          this.spawnBullet(boss.x, boss.y, offset + (i / 14) * Math.PI * 2, 180, dmg)
+        }
+      }
+      this.bossAimTimer += dt
+      if (this.bossAimTimer >= 4.5) {
+        this.bossAimTimer = 0
+        const aim = Math.atan2(p.y - boss.y, p.x - boss.x)
+        for (let i = -2; i <= 2; i++) {
+          this.spawnBullet(boss.x, boss.y, aim + i * 0.18, 300, dmg)
+        }
+      }
+    }
+
+    const invuln = this.downed || this.state === 'levelup'
+    for (let i = this.bullets.length - 1; i >= 0; i--) {
+      const b = this.bullets[i]
+      b.life -= dt
+      b.x += b.vx * dt
+      b.y += b.vy * dt
+      b.sprite.position.set(b.x, b.y)
+      let dead = b.life <= 0
+      if (!dead && !invuln && dist2(b.x, b.y, p.x, p.y) < (10 + p.radius) ** 2) {
+        p.hp -= b.dmg
+        this.shake = Math.max(this.shake, 5)
+        dead = true
+        if (p.hp <= 0) {
+          if (this.net) this.enterDowned()
+          else this.end(false)
+        }
+      }
+      if (dead) {
+        this.world.removeChild(b.sprite)
+        b.sprite.visible = false
+        this.bullets.splice(i, 1)
+        if (this.bulletPool.length < 80) this.bulletPool.push(b)
+      }
+    }
+  }
+
+  private spawnBullet(x: number, y: number, angle: number, speed: number, dmg: number): void {
+    const b = this.bulletPool.pop() ?? new Bullet(this.tex.orb)
+    b.init(x, y, angle, speed, dmg)
+    this.world.addChild(b.sprite)
+    this.bullets.push(b)
   }
 
   // ------------------------------------------------------------ 弹体
@@ -833,6 +900,21 @@ export class Game {
     )
     if (target) {
       this.evolveWeapon(target)
+      return
+    }
+    // 禁忌融合（GDD 5.4）：两把进化武器合而为一，效果全保留并腾出武器槽
+    const evolved = p.weapons.filter(w => w.evolved && !w.fused)
+    if (evolved.length >= 2) {
+      const [a, b] = evolved
+      const fusion = new FusedWeapon(a, b)
+      p.weapons = p.weapons.filter(w => w !== a && w !== b)
+      p.weapons.push(fusion)
+      p.atkPct += 30 // 禁忌之力
+      this.flash()
+      this.shake = 24
+      this.hitstop = 0.15
+      this.fx.burstRing(p.x, p.y)
+      this.announce(`☠ 禁忌融合！${a.name} + ${b.name} → ${fusion.name}（攻击力+30%，武器槽+1）`, false, true)
       return
     }
     // 无可进化：补给（经验爆珠 + 治疗）

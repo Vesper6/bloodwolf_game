@@ -14,6 +14,7 @@ export abstract class Weapon {
   copies = 1
   timer = 0
   evolved = false
+  fused = false
 
   get name(): string { return WEAPON_INFO[this.id].name }
 
@@ -276,6 +277,40 @@ export function createWeapon(id: WeaponId): Weapon {
     case 'claw': return new ClawWeapon()
     case 'bow': return new BowWeapon()
     case 'orb': return new OrbWeapon()
+  }
+}
+
+/** 禁忌融合（GDD 5.4）：两把进化武器合而为一，腾出武器槽 */
+export const FUSION_NAMES: Record<string, string> = {
+  'bow+claw': '影狙·无我',
+  'claw+orb': '千爪熔核',
+  'bow+orb': '腐蚀之星',
+}
+
+export class FusedWeapon extends Weapon {
+  readonly id: WeaponId
+  readonly baseDmg = 0
+  readonly fusionName: string
+  private subs: Weapon[]
+
+  constructor(a: Weapon, b: Weapon) {
+    super()
+    this.id = a.id
+    this.level = 3
+    this.evolved = true
+    this.fused = true
+    this.subs = [a, b]
+    this.fusionName = FUSION_NAMES[[a.id, b.id].sort().join('+')] ?? '禁忌兵装'
+  }
+
+  override get name(): string { return this.fusionName }
+
+  update(g: Game, dt: number): void {
+    for (const s of this.subs) s.update(g, dt)
+  }
+
+  override dispose(g: Game): void {
+    for (const s of this.subs) s.dispose(g)
   }
 }
 
