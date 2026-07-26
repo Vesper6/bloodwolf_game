@@ -60,6 +60,30 @@ export class Fx {
     this.slashes.push({ g, life: 0.16 })
   }
 
+  /** 弑神狙激光 */
+  laser(x1: number, y1: number, x2: number, y2: number): void {
+    const g = new Graphics()
+    g.lineStyle(7, 0xff2040, 0.35)
+    g.moveTo(x1, y1); g.lineTo(x2, y2)
+    g.lineStyle(2.5, 0xffffff, 0.95)
+    g.moveTo(x1, y1); g.lineTo(x2, y2)
+    this.layer.addChild(g)
+    this.slashes.push({ g, life: 0.14 })
+  }
+
+  /** 血月熔核连锁爆炸 */
+  explosion(x: number, y: number, r: number): void {
+    const g = new Graphics()
+    g.beginFill(0xff7a2e, 0.35)
+    g.drawCircle(0, 0, r)
+    g.endFill()
+    g.lineStyle(3, 0xffce6b, 0.9)
+    g.drawCircle(0, 0, r * 0.7)
+    g.position.set(x, y)
+    this.layer.addChild(g)
+    this.slashes.push({ g, life: 0.22 })
+  }
+
   /** 合成爆发环 */
   burstRing(x: number, y: number): void {
     const g = new Graphics()

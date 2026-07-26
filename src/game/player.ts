@@ -1,5 +1,5 @@
 import { Sprite, Texture } from 'pixi.js'
-import { CFG } from '../core/config'
+import { CFG, TagId } from '../core/config'
 import { Weapon } from './weapons'
 
 /** 血狼·雷加 */
@@ -19,6 +19,12 @@ export class Player {
   pickupPct = 0
   critChance = CFG.player.critChance
   critDmg = CFG.player.critDmg
+  buildDmgPct = 0
+
+  /** 每种被动已叠加的等级（上限 PASSIVE_MAX_LV） */
+  passiveLv: Record<string, number> = {}
+  /** 流派标签计数（共鸣） */
+  tags: Record<TagId, number> = { blood: 0, crit: 0, build: 0 }
 
   weapons: Weapon[] = []
 
@@ -87,6 +93,21 @@ export class Player {
 
   heal(v: number): void {
     this.hp = Math.min(this.maxHp, this.hp + v)
+  }
+
+  /** 应用被动词条并记录等级 */
+  applyPassive(key: string, value: number): void {
+    this.passiveLv[key] = (this.passiveLv[key] ?? 0) + 1
+    switch (key) {
+      case 'atk': this.atkPct += value; break
+      case 'haste': this.hastePct += value; break
+      case 'move': this.movePct += value; break
+      case 'maxhp': this.maxHp += value; this.heal(value); break
+      case 'pickup': this.pickupPct += value; break
+      case 'crit': this.critChance += value; break
+      case 'critdmg': this.critDmg += value; break
+      case 'blueprint': this.buildDmgPct += value; break
+    }
   }
 
   startRage(): boolean {

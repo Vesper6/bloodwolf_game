@@ -1,5 +1,5 @@
 import { Application, Graphics, Texture } from 'pixi.js'
-import { ENEMIES, EnemyKind } from '../core/config'
+import { BuildingId, ENEMIES, EnemyKind } from '../core/config'
 
 export interface Textures {
   player: Texture
@@ -7,7 +7,9 @@ export interface Textures {
   gemBig: Texture
   arrow: Texture
   orb: Texture
+  chest: Texture
   enemy: Record<EnemyKind, Texture>
+  building: Record<BuildingId, Texture>
 }
 
 /** 程序化生成占位美术（M0 阶段无需外部资源） */
@@ -83,13 +85,45 @@ export function makeTextures(app: Application): Textures {
     enemy[kind] = gen(eg)
   }
 
+  // 血月宝箱
+  const cg = new Graphics()
+  cg.beginFill(0xd8264a, 0.25); cg.drawCircle(0, 0, 26); cg.endFill()
+  cg.lineStyle(2, 0xffce6b)
+  cg.beginFill(0x6e2030); cg.drawRoundedRect(-16, -12, 32, 24, 4); cg.endFill()
+  cg.beginFill(0xffce6b); cg.drawRect(-16, -3, 32, 6); cg.drawCircle(0, 0, 4); cg.endFill()
+
+  // 狼牙哨塔：底座 + 炮管
+  const tg = new Graphics()
+  tg.lineStyle(2, 0x111111)
+  tg.beginFill(0x4a4a5c); tg.drawCircle(0, 0, 18); tg.endFill()
+  tg.beginFill(0x6a6a80); tg.drawCircle(0, 0, 11); tg.endFill()
+  tg.beginFill(0xd0d0e0); tg.drawRect(6, -3, 22, 6); tg.endFill()
+  tg.beginFill(0xff4d4d); tg.drawCircle(0, 0, 4); tg.endFill()
+
+  // 血祭图腾：猩红柱
+  const og2 = new Graphics()
+  og2.lineStyle(2, 0x111111)
+  og2.beginFill(0x8a1428); og2.drawRoundedRect(-10, -26, 20, 52, 5); og2.endFill()
+  og2.beginFill(0xff4d6a); og2.drawCircle(0, -14, 6); og2.endFill()
+  og2.beginFill(0x5a0c1a); og2.drawRect(-10, 2, 20, 6); og2.endFill()
+
+  // 磁能虹吸柱：青蓝水晶
+  const sg = new Graphics()
+  sg.lineStyle(2, 0x111111)
+  sg.beginFill(0x1a7a8c)
+  sg.moveTo(0, -30); sg.lineTo(12, -6); sg.lineTo(8, 24); sg.lineTo(-8, 24); sg.lineTo(-12, -6); sg.closePath()
+  sg.endFill()
+  sg.beginFill(0x6fe8ff); sg.drawCircle(0, -8, 5); sg.endFill()
+
   return {
     player: gen(pg),
     gem: gen(gg),
     gemBig: gen(gb),
     arrow: gen(ag),
     orb: gen(og),
+    chest: gen(cg),
     enemy,
+    building: { turret: gen(tg), totem: gen(og2), siphon: gen(sg) },
   }
 }
 

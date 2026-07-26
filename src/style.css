@@ -43,6 +43,24 @@ html, body {
 }
 .bar.energy.ready { box-shadow: 0 0 12px #d05bff; }
 
+/* 公告走马灯 */
+#announce {
+  position: absolute; top: 84px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: none;
+}
+.toast {
+  padding: 5px 18px; border-radius: 16px; font-size: 14px; white-space: nowrap;
+  background: rgba(20, 8, 14, .82); border: 1px solid rgba(255,120,120,.35); color: #ecc;
+  animation: toastIn .25s ease-out, toastOut .4s ease-in 2.8s forwards;
+}
+.toast.warn { border-color: rgba(255,80,80,.7); color: #ff9a9a; }
+.toast.epic {
+  border-color: #ffb02e; color: #ffce6b; font-size: 16px; font-weight: 700;
+  box-shadow: 0 0 18px rgba(255,176,46,.45);
+}
+@keyframes toastIn { 0% { opacity: 0; transform: translateY(-10px) scale(.9); } 100% { opacity: 1; } }
+@keyframes toastOut { 100% { opacity: 0; transform: translateY(-8px); } }
+
 #boss-bar-wrap { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: min(70vw, 520px); text-align: center; }
 #boss-name { font-size: 14px; color: #ffb0b0; text-shadow: 0 0 6px #000; margin-bottom: 3px; }
 .bar.boss { height: 12px; }

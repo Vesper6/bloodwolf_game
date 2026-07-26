@@ -37,6 +37,7 @@ export class Arrow {
   sprite: Sprite
   x = 0; y = 0; vx = 0; vy = 0
   dmg = 0; pierce = 0; life = 0
+  fromBuilding = false
   hit = new Set<Enemy>()
 
   constructor(tex: Texture) {
@@ -44,17 +45,38 @@ export class Arrow {
     this.sprite.anchor.set(0.5)
   }
 
-  init(x: number, y: number, angle: number, speed: number, dmg: number, pierce: number): void {
+  init(x: number, y: number, angle: number, speed: number, dmg: number, pierce: number, tint: number, fromBuilding: boolean): void {
     this.x = x; this.y = y
     this.vx = Math.cos(angle) * speed
     this.vy = Math.sin(angle) * speed
     this.dmg = dmg
     this.pierce = pierce
     this.life = 1.4
+    this.fromBuilding = fromBuilding
     this.hit.clear()
     this.sprite.rotation = angle
+    this.sprite.tint = tint
     this.sprite.position.set(x, y)
     this.sprite.visible = true
+  }
+}
+
+/** 血月宝箱：精英/Boss 掉落，拾取触发武器进化或补给 */
+export class Chest {
+  sprite: Sprite
+  x = 0; y = 0
+  private t = 0
+
+  constructor(tex: Texture, x: number, y: number) {
+    this.sprite = new Sprite(tex)
+    this.sprite.anchor.set(0.5)
+    this.x = x; this.y = y
+    this.sprite.position.set(x, y)
+  }
+
+  update(dt: number): void {
+    this.t += dt
+    this.sprite.scale.set(1 + Math.sin(this.t * 4) * 0.1)
   }
 }
 

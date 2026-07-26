@@ -1,12 +1,15 @@
 import { Application, Container, TilingSprite } from 'pixi.js'
-import { CFG, ENEMIES, EnemyKind, WeaponId } from '../core/config'
+import {
+  BuildingId, CFG, ENEMIES, EVOLUTIONS, EnemyKind, PASSIVES, RESONANCE_DESC, TAG_NAME, TagId, WeaponId,
+} from '../core/config'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
-import { Arrow, Enemy, Gem } from './entities'
+import { Building } from './buildings'
+import { Arrow, Chest, Enemy, Gem } from './entities'
 import { Fx } from './fx'
 import { generateOptions, hideLevelUpUI, showLevelUpUI } from './levelup'
 import { Player } from './player'
 import { Textures, makeGroundTexture, makeTextures } from './textures'
-import { Weapon, createWeapon } from './weapons'
+import { Weapon, createEvolvedWeapon, createWeapon } from './weapons'
 
 type GameState = 'running' | 'levelup' | 'end'
 
@@ -21,6 +24,8 @@ export class Game {
   enemies: Enemy[] = []
   arrows: Arrow[] = []
   gems: Gem[] = []
+  buildings: Building[] = []
+  chests: Chest[] = []
   private enemyPool: Enemy[] = []
   private arrowPool: Arrow[] = []
   private gemPool: Gem[] = []
@@ -75,6 +80,7 @@ export class Game {
 
     this.addWeapon('claw') // 雷加初始武器
     this.el.hud.classList.remove('hidden')
+    ;(window as unknown as Record<string, unknown>).__game = this // 调试/自动化测试入口
 
     this.app.ticker.add(() => {
       const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05)
@@ -104,6 +110,8 @@ export class Game {
     this.updateEnemies(dt)
     this.updateArrows(dt)
     this.updateGems(dt)
+    this.updateBuildings(dt)
+    this.updateChests(dt)
     this.fx.update(dt)
     this.updateCamera()
     this.updateHUD()
@@ -206,6 +214,11 @@ export class Game {
 
       // 接触伤害（持续型，堆叠有上限）
       if (d < e.r + p.radius) contactDmg += e.dmg
+
+      // 磨损筑造物
+      for (const b of this.buildings) {
+        if (dist2(e.x, e.y, b.x, b.y) < (e.r + 26) ** 2) b.hp -= e.dmg * 0.5 * dt
+      }
     }
     if (contactDmg > 0) {
       p.hp -= Math.min(contactDmg, CFG.player.maxContactDps) * dt
@@ -222,9 +235,9 @@ export class Game {
 
   // ------------------------------------------------------------ 弹体
 
-  spawnArrow(x: number, y: number, angle: number, dmg: number, pierce: number): void {
+  spawnArrow(x: number, y: number, angle: number, dmg: number, pierce: number, opts?: { tint?: number; building?: boolean }): void {
     const a = this.arrowPool.pop() ?? new Arrow(this.tex.arrow)
-    a.init(x, y, angle, 720, dmg, pierce)
+    a.init(x, y, angle, 720, dmg, pierce, opts?.tint ?? 0xffffff, opts?.building ?? false)
     this.world.addChild(a.sprite)
     this.arrows.push(a)
   }
@@ -242,7 +255,7 @@ export class Game {
           if (!e.alive || a.hit.has(e)) continue
           if (dist2(a.x, a.y, e.x, e.y) < (12 + e.r) ** 2) {
             a.hit.add(e)
-            this.dealDamage(e, a.dmg)
+            this.dealDamage(e, a.dmg, { building: a.fromBuilding })
             a.pierce--
             if (a.pierce < 0) break
           }
@@ -267,14 +280,43 @@ export class Game {
       .slice(0, n)
   }
 
-  dealDamage(e: Enemy, base: number): void {
+  nearestEnemyTo(x: number, y: number, range: number): Enemy | null {
+    let best: Enemy | null = null
+    let bestD = range * range
+    for (const e of this.enemies) {
+      if (!e.alive) continue
+      const d = dist2(x, y, e.x, e.y)
+      if (d < bestD) { bestD = d; best = e }
+    }
+    return best
+  }
+
+  /** 伤害乘区结算（GDD 8.1）+ 流派共鸣效果 */
+  dealDamage(e: Enemy, base: number, opts?: { forceCrit?: boolean; building?: boolean }): void {
     if (!e.alive) return
     const p = this.player
-    let mul = 1 + p.atkPct / 100
-    // 雷加被动：血量越低伤害越高（最高 +150%）
-    mul *= 1 + CFG.player.lowHpDmgBonus * (1 - Math.max(0, p.hp) / p.maxHp)
-    const crit = Math.random() * 100 < p.critChance
-    const dmg = base * mul * (crit ? p.critDmg / 100 : 1)
+    const tags = p.tags
+
+    // 暴击共鸣 III/V/VII
+    let critChance = p.critChance + (tags.crit >= 3 ? 8 : 0)
+    let critDmg = p.critDmg + (tags.crit >= 5 ? 60 : 0)
+    if (tags.crit >= 7 && critChance > 100) critDmg += (critChance - 100) * 2
+    const crit = opts?.forceCrit || Math.random() * 100 < critChance
+
+    let mul: number
+    if (opts?.building) {
+      // 筑造物：默认继承 50% 攻击力加成，筑造共鸣 V 继承 100%，工程蓝图独立乘区
+      const inherit = tags.build >= 5 ? 1 : 0.5
+      mul = (1 + (p.atkPct / 100) * inherit) * (1 + p.buildDmgPct / 100)
+    } else {
+      mul = 1 + p.atkPct / 100
+      // 雷加被动：血量越低伤害越高（最高 +150%）
+      mul *= 1 + CFG.player.lowHpDmgBonus * (1 - Math.max(0, p.hp) / p.maxHp)
+    }
+    // 嗜血共鸣 VII
+    if (tags.blood >= 7 && p.hp < p.maxHp * 0.5) mul *= 1.4
+
+    const dmg = base * mul * (crit ? critDmg / 100 : 1)
 
     e.hp -= dmg
     this.totalDamage += dmg
@@ -282,13 +324,14 @@ export class Game {
     this.fx.damageText(e.x, e.y - e.r, dmg, crit)
     if (crit) { this.hitstop = Math.max(this.hitstop, 0.03); this.shake = Math.max(this.shake, 4) }
 
-    // 血怒吸血
-    if (p.raging) {
-      const heal = dmg * CFG.rage.lifesteal
-      if (p.hp < p.maxHp) {
-        p.heal(heal)
-        if (Math.random() < 0.08) this.fx.healText(p.x, p.y, heal)
-      }
+    // 血怒吸血 + 嗜血共鸣 V
+    let steal = 0
+    if (p.raging) steal += CFG.rage.lifesteal
+    if (tags.blood >= 5) steal += 0.02
+    if (steal > 0 && p.hp < p.maxHp) {
+      const heal = Math.min(dmg * steal, p.maxHp * 0.05)
+      p.heal(heal)
+      if (Math.random() < 0.06) this.fx.healText(p.x, p.y, heal)
     }
 
     if (e.hp <= 0) this.killEnemy(e)
@@ -299,6 +342,12 @@ export class Game {
     this.kills++
     this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + CFG.rage.energyPerKill)
     this.dropGem(e.x, e.y, Math.round(e.xp * (1 + (this.time / 60) * CFG.gemValueGrowthPerMin)))
+
+    // 嗜血共鸣 III：击杀回血
+    if (this.player.tags.blood >= 3) this.player.heal(1)
+
+    // 精英/Boss 掉落血月宝箱
+    if (e.kind === 'elite' || e.isBoss) this.dropChest(e.x, e.y)
 
     if (e.isBoss) {
       this.boss = null
@@ -352,6 +401,116 @@ export class Game {
         }
       }
     }
+  }
+
+  // ------------------------------------------------------------ 筑造系统（GDD 7章）
+
+  placeBuilding(id: BuildingId): void {
+    const owned = this.buildings.find(b => b.id === id)
+    if (owned) {
+      owned.upgrade(this)
+      this.announce(`${owned.name} 升至 Lv${owned.level}`)
+      return
+    }
+    const b = new Building(id, this, this.player.x, this.player.y)
+    this.buildings.push(b)
+  }
+
+  private updateBuildings(dt: number): void {
+    for (let i = this.buildings.length - 1; i >= 0; i--) {
+      const b = this.buildings[i]
+      if (b.hp <= 0) {
+        this.announce(`${b.name} 被摧毁了！`, true)
+        this.fx.explosion(b.x, b.y, 50)
+        b.destroy(this)
+        this.buildings.splice(i, 1)
+        continue
+      }
+      b.update(this, dt)
+    }
+  }
+
+  // ------------------------------------------------------------ 血月宝箱与武器进化（GDD 5.3）
+
+  dropChest(x: number, y: number): void {
+    if (this.chests.length >= 3) return
+    const c = new Chest(this.tex.chest, x, y)
+    this.world.addChild(c.sprite)
+    this.chests.push(c)
+    this.announce('血月宝箱降临！拾取以进化武器')
+  }
+
+  private updateChests(dt: number): void {
+    const p = this.player
+    for (let i = this.chests.length - 1; i >= 0; i--) {
+      const c = this.chests[i]
+      c.update(dt)
+      if (dist2(c.x, c.y, p.x, p.y) < 44 ** 2) {
+        this.world.removeChild(c.sprite)
+        c.sprite.destroy()
+        this.chests.splice(i, 1)
+        this.openChest(c.x, c.y)
+      }
+    }
+  }
+
+  private openChest(x: number, y: number): void {
+    // 进化条件：3级未进化武器 + 对应被动 Lv3+
+    const p = this.player
+    const target = p.weapons.find(w =>
+      w.level >= 3 && !w.evolved && (p.passiveLv[EVOLUTIONS[w.id].requires] ?? 0) >= 3,
+    )
+    if (target) {
+      this.evolveWeapon(target)
+      return
+    }
+    // 无可进化：补给（经验爆珠 + 治疗）
+    p.heal(25)
+    const value = Math.max(3, Math.round(6 * (1 + (this.time / 60) * CFG.gemValueGrowthPerMin)))
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      this.dropGem(x + Math.cos(a) * 40, y + Math.sin(a) * 40, value)
+    }
+    this.announce('血月宝箱：获得补给')
+  }
+
+  private evolveWeapon(w: Weapon): void {
+    const idx = this.player.weapons.indexOf(w)
+    if (idx < 0) return
+    w.dispose(this)
+    const evo = createEvolvedWeapon(w.id)
+    this.player.weapons[idx] = evo
+    this.flash()
+    this.shake = 22
+    this.hitstop = 0.12
+    this.fx.burstRing(this.player.x, this.player.y)
+    this.announce(`⚔ 武器进化！${w.name} → ${evo.name}`, false, true)
+  }
+
+  // ------------------------------------------------------------ 流派共鸣（GDD 6章）
+
+  addTag(tag: TagId): void {
+    const p = this.player
+    const before = p.tags[tag]
+    p.tags[tag] = before + 1
+    for (const threshold of [3, 5, 7]) {
+      if (before < threshold && p.tags[tag] >= threshold) {
+        this.flash()
+        this.announce(`✦ ${RESONANCE_DESC[tag][threshold]}`, false, true)
+      }
+    }
+  }
+
+  // ------------------------------------------------------------ 公告走马灯
+
+  private announce(text: string, warn = false, epic = false): void {
+    const wrap = document.getElementById('announce')!
+    const div = document.createElement('div')
+    div.className = 'toast' + (warn ? ' warn' : '') + (epic ? ' epic' : '')
+    div.textContent = text
+    wrap.appendChild(div)
+    setTimeout(() => div.remove(), 3200)
+    while (wrap.children.length > 4) wrap.children[0].remove()
   }
 
   // ------------------------------------------------------------ 武器与合成
@@ -408,6 +567,7 @@ export class Game {
     }
     showLevelUpUI(options, o => {
       o.apply(this)
+      if (o.tag) this.addTag(o.tag)
       this.player.pendingLevels--
       if (this.player.pendingLevels > 0) {
         this.openLevelUp()
@@ -433,9 +593,22 @@ export class Game {
     document.getElementById('energy-text')!.textContent =
       p.raging ? `血怒中 ${p.rageTimer.toFixed(0)}s` : p.energy >= CFG.rage.energyMax ? '血怒就绪 [空格]' : '血怒 [空格]'
 
-    this.el.weaponList.textContent = p.weapons
-      .map(w => `${w.name} Lv${w.level}${w.level < 3 ? ` (${w.copies}/3)` : ' MAX'}`)
+    const weaponText = p.weapons
+      .map(w => {
+        if (w.evolved) return `★${w.name}`
+        if (w.level < 3) return `${w.name} Lv${w.level} (${w.copies}/3)`
+        const req = EVOLUTIONS[w.id].requires
+        const ready = (p.passiveLv[req] ?? 0) >= 3
+        return `${w.name} MAX${ready ? '·可进化(拾取宝箱)' : `·进化需${PASSIVES[req].name}Lv3`}`
+      })
       .join(' · ')
+    const buildingText = this.buildings.map(b => `${b.name} Lv${b.level}`).join(' · ')
+    const tagText = (Object.keys(TAG_NAME) as TagId[])
+      .filter(t => p.tags[t] > 0)
+      .map(t => `${TAG_NAME[t]}×${p.tags[t]}`)
+      .join(' ')
+    this.el.weaponList.textContent =
+      weaponText + (buildingText ? ` ｜ ${buildingText}` : '') + (tagText ? ` ｜ 共鸣 ${tagText}` : '')
 
     if (this.boss && this.boss.alive) {
       this.el.bossBar.style.width = `${clamp((this.boss.hp / this.boss.maxHp) * 100, 0, 100)}%`
