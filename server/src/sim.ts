@@ -33,6 +33,8 @@ const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi 
 export class EnemySim {
   time = 0
   winTime = WIN_TIME
+  /** 血月等级（难度层）：怪物血量 ×1.25^(n-1) */
+  moonLv = 1
   enemies = new Map<number, SimEnemy>()
   gems = new Map<number, SimGem>()
   chests = new Map<number, { x: number; y: number }>()
@@ -114,7 +116,9 @@ export class EnemySim {
 
   private spawn(kind: Kind, players: PlayerPos[]): SimEnemy | null {
     const anchor = players[Math.floor(Math.random() * players.length)]
-    const hpMul = Math.pow(HP_GROWTH_PER_MIN, this.time / 60) * (1 + 0.75 * (this.playerCount - 1))
+    const hpMul = Math.pow(HP_GROWTH_PER_MIN, this.time / 60)
+      * (1 + 0.75 * (this.playerCount - 1))
+      * Math.pow(1.25, this.moonLv - 1)
     const ang = Math.random() * Math.PI * 2
     const dist = 620
     const def = DEFS[kind]

@@ -1,24 +1,88 @@
+import { CHARS, CharId, MOON_MAX, TALENTS, WEAPON_INFO } from './core/config'
+import { buyTalent, loadMeta, talentLv } from './core/meta'
 import { Game } from './game/Game'
 import { Net } from './net/net'
 
 const startScreen = document.getElementById('start-screen')!
 const mpStatus = document.getElementById('mp-status')!
 const roomInput = document.getElementById('room-input') as HTMLInputElement
+const meta = loadMeta()
 
-// URL 携带 ?room=XXX 时自动填入房号（分享链接加入）
+let selectedChar: CharId = 'rega'
+let moonLv = 1
+
+// ---------- 角色选择 ----------
+const charGrid = document.getElementById('char-grid')!
+function renderChars(): void {
+  charGrid.innerHTML = ''
+  for (const [id, def] of Object.entries(CHARS)) {
+    const div = document.createElement('div')
+    div.className = 'char-opt' + (id === selectedChar ? ' sel' : '')
+    div.innerHTML = `
+      <div class="co-name">${def.name}</div>
+      <div class="co-role">${def.role} · 初始【${WEAPON_INFO[def.weapon].name}】</div>
+      <div class="co-desc">${def.desc}</div>
+      <div class="co-skill">技【${def.skill.name}】${def.skill.desc}</div>
+    `
+    div.addEventListener('click', () => { selectedChar = id as CharId; renderChars() })
+    charGrid.appendChild(div)
+  }
+}
+renderChars()
+
+// ---------- 血月等级 ----------
+const moonLvEl = document.getElementById('moon-lv')!
+function renderMoon(): void {
+  moonLvEl.textContent = String(moonLv)
+  moonLvEl.title = `已解锁至 ${meta.moonUnlocked} 层`
+}
+document.getElementById('moon-minus')!.addEventListener('click', () => {
+  moonLv = Math.max(1, moonLv - 1); renderMoon()
+})
+document.getElementById('moon-plus')!.addEventListener('click', () => {
+  if (moonLv >= meta.moonUnlocked) {
+    mpStatus.textContent = `血月等级 ${moonLv + 1} 未解锁：通关第 ${moonLv} 层后开启`
+    return
+  }
+  moonLv = Math.min(MOON_MAX, moonLv + 1); renderMoon()
+})
+renderMoon()
+
+// ---------- 血脉天赋 ----------
+const talentPanel = document.getElementById('talent-panel')!
+const crystalEl = document.getElementById('crystal-count')!
+function renderTalents(): void {
+  crystalEl.textContent = `❖ 血晶 ${meta.crystals}`
+  talentPanel.innerHTML = ''
+  for (const [key, def] of Object.entries(TALENTS)) {
+    const lv = talentLv(meta, key)
+    const btn = document.createElement('button')
+    btn.className = 'talent-btn'
+    btn.disabled = lv >= def.max || meta.crystals < def.cost(lv)
+    btn.textContent = lv >= def.max
+      ? `${def.name} MAX · ${def.desc(lv)}`
+      : `${def.name} Lv${lv} → ${lv + 1}（${def.cost(lv)}血晶）· ${def.desc(lv + 1)}`
+    btn.addEventListener('click', () => { if (buyTalent(meta, key)) renderTalents() })
+    talentPanel.appendChild(btn)
+  }
+}
+document.getElementById('talent-toggle')!.addEventListener('click', () => {
+  talentPanel.classList.toggle('hidden')
+  renderTalents()
+})
+renderTalents()
+
+// ---------- 开局 ----------
 const urlRoom = new URLSearchParams(location.search).get('room')
 if (urlRoom) {
   roomInput.value = urlRoom
-  mpStatus.textContent = `检测到邀请链接，点击「加入房间」进入 ${urlRoom}`
+  mpStatus.textContent = `检测到邀请链接，选好角色后点「加入房间」进入 ${urlRoom}`
 }
 
 function begin(net: Net | null): void {
   startScreen.classList.add('hidden')
-  new Game(net)
-  if (net) {
-    // 分享链接写入地址栏，方便复制邀请
-    history.replaceState(null, '', `?room=${net.roomId}`)
-  }
+  new Game(net, selectedChar, net ? (net.moonLv || 1) : moonLv)
+  if (net) history.replaceState(null, '', `?room=${net.roomId}`)
 }
 
 document.getElementById('start-btn')!.addEventListener('click', () => begin(null))
@@ -26,7 +90,7 @@ document.getElementById('start-btn')!.addEventListener('click', () => begin(null
 document.getElementById('host-btn')!.addEventListener('click', async () => {
   mpStatus.textContent = '正在创建房间…'
   try {
-    const net = await Net.connect('create')
+    const net = await Net.connect('create', undefined, moonLv)
     begin(net)
   } catch (e) {
     mpStatus.textContent = `连接失败：${(e as Error).message}（请确认联机服务器已启动）`
@@ -46,5 +110,5 @@ document.getElementById('join-btn')!.addEventListener('click', async () => {
 })
 
 document.getElementById('restart-btn')!.addEventListener('click', () => {
-  location.href = location.pathname // 清掉房号参数重开
+  location.href = location.pathname
 })

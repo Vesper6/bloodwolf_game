@@ -19,8 +19,11 @@ export class BloodWolfRoom extends Room {
   private pstates = new Map<string, PState>()
   private over = false
   private snapAcc = 0
+  private moonLv = 1
 
-  onCreate(): void {
+  onCreate(options?: { moonLv?: number }): void {
+    this.moonLv = Math.max(1, Math.min(30, options?.moonLv ?? 1))
+    this.sim.moonLv = this.moonLv
     this.onMessage('state', (client, msg: PState) => {
       if (typeof msg?.x !== 'number' || typeof msg?.y !== 'number') return
       this.pstates.set(client.sessionId, msg)
@@ -80,7 +83,7 @@ export class BloodWolfRoom extends Room {
   }
 
   onJoin(client: Client): void {
-    client.send('welcome', { id: client.sessionId, roomId: this.roomId })
+    client.send('welcome', { id: client.sessionId, roomId: this.roomId, moonLv: this.moonLv })
     client.send('init', this.sim.initData())
     // 已有玩家状态同步给新人
     for (const [id, p] of this.pstates) client.send('pstate', { id, ...p })

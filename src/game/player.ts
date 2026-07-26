@@ -1,9 +1,13 @@
 import { Sprite, Texture } from 'pixi.js'
-import { CFG, TagId } from '../core/config'
+import { CFG, CharId, TagId } from '../core/config'
 import { Weapon } from './weapons'
 
-/** 血狼·雷加 */
 export class Player {
+  charId: CharId = 'rega'
+  /** 范围乘数（卡恩被动） */
+  areaMul = 1
+  /** 局外天赋：幸运（提升三选一稀有度） */
+  luck = 0
   sprite: Sprite
   x = 0
   y = 0

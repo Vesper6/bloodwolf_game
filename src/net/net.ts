@@ -26,26 +26,28 @@ export class Net {
   room!: Room
   id = ''
   roomId = ''
+  moonLv = 1
 
   static serverUrl(): string {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     return `${proto}://${location.hostname}:2567`
   }
 
-  static async connect(action: 'create' | 'join', roomId?: string): Promise<Net> {
+  static async connect(action: 'create' | 'join', roomId?: string, moonLv = 1): Promise<Net> {
     const client = new Client(Net.serverUrl())
     const net = new Net()
     net.room = action === 'create'
-      ? await client.create('bloodwolf')
+      ? await client.create('bloodwolf', { moonLv })
       : await client.joinById(roomId!)
     net.id = net.room.sessionId
     net.roomId = net.room.roomId
+    net.moonLv = moonLv
     return net
   }
 
   bind(h: NetHandlers): void {
     const r = this.room
-    r.onMessage('welcome', () => {})
+    r.onMessage('welcome', (d: { moonLv?: number }) => { if (d?.moonLv) this.moonLv = d.moonLv })
     r.onMessage('init', h.onInit)
     r.onMessage('snap', h.onSnap)
     r.onMessage('dead', h.onDead)

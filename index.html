@@ -40,12 +40,22 @@
   <div id="start-screen" class="overlay">
     <h1 class="title">血 狼</h1>
     <p class="subtitle">BLOOD WOLF · 血月下的求生</p>
-    <div class="char-card">
-      <div class="char-name">血狼 · 雷加</div>
-      <div class="char-desc">近战爆发 · 初始武器【裂空爪】<br/>被动：血量越低，伤害越高（最高 +150%）<br/>主动【血怒】：击杀积攒能量，10 秒狼化狂暴（攻速+100%，吸血20%）</div>
+
+    <div id="char-grid"></div>
+
+    <div class="meta-row">
+      <div class="moon-select">
+        血月等级
+        <button id="moon-minus" class="tiny-btn">−</button>
+        <span id="moon-lv">1</span>
+        <button id="moon-plus" class="tiny-btn">＋</button>
+      </div>
+      <div id="crystal-count"></div>
+      <button id="talent-toggle" class="mp-btn">血脉天赋</button>
     </div>
-    <p class="controls">WASD / 方向键移动 · 空格释放血怒 · 手机端触屏拖动</p>
-    <p class="goal">在无尽魔潮中生存 15 分钟</p>
+    <div id="talent-panel" class="hidden"></div>
+
+    <p class="controls">WASD / 方向键移动 · 空格释放主动技 · 手机端触屏拖动 · 生存 15 分钟后进入无尽模式</p>
     <button id="start-btn">单人 · 进入血月</button>
     <div class="mp-row">
       <button id="host-btn" class="mp-btn">创建联机房间</button>

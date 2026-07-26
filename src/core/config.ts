@@ -128,6 +128,56 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
 
 export const MAX_BUILDINGS = 4
 
+/** ---------- 角色（GDD 4章，M3 实装 4 名） ---------- */
+export type CharId = 'rega' | 'vera' | 'vivi' | 'kane'
+
+export interface CharDef {
+  name: string
+  role: string
+  desc: string
+  weapon: WeaponId
+  building?: BuildingId
+  skill: { name: string; desc: string }
+}
+
+export const CHARS: Record<CharId, CharDef> = {
+  rega: {
+    name: '血狼·雷加', role: '近战爆发', weapon: 'claw',
+    desc: '被动：血量越低伤害越高（最高+150%）',
+    skill: { name: '血怒', desc: '10秒狼化：攻速+100%，吸血20%' },
+  },
+  vera: {
+    name: '银月·薇拉', role: '远程射手', weapon: 'bow',
+    desc: '被动：暴击率+10%，攻速+15%',
+    skill: { name: '月影齐射', desc: '向16个方向射出穿透箭雨' },
+  },
+  vivi: {
+    name: '筑造师·薇薇', role: '筑造流', weapon: 'orb', building: 'turret',
+    desc: '被动：开局自带哨塔，筑造物伤害+40%',
+    skill: { name: '快速筑造', desc: '立刻免费放置/升级一座狼牙哨塔' },
+  },
+  kane: {
+    name: '术狼·卡恩', role: '法术AOE', weapon: 'orb',
+    desc: '被动：技能与武器范围+30%',
+    skill: { name: '血月陨落', desc: '全屏陨石，重创所有敌人' },
+  },
+}
+
+/** ---------- 血月等级（GDD 8.3）：难度层，通关解锁下一层 ---------- */
+export const MOON_MAX = 30
+/** 第 n 层怪物属性倍率 */
+export const moonMul = (lv: number) => Math.pow(1.25, lv - 1)
+
+/** ---------- 血脉天赋（局外成长，GDD 11章） ---------- */
+export interface TalentDef { name: string; desc: (lv: number) => string; max: number; cost: (lv: number) => number }
+
+export const TALENTS: Record<string, TalentDef> = {
+  atk:   { name: '狼牙', desc: lv => `攻击力 +${lv * 2}%`, max: 10, cost: lv => 25 + lv * 25 },
+  hp:    { name: '狼血', desc: lv => `最大生命 +${lv * 10}`, max: 10, cost: lv => 25 + lv * 25 },
+  speed: { name: '狼步', desc: lv => `移动速度 +${lv}%`, max: 10, cost: lv => 20 + lv * 20 },
+  luck:  { name: '狼运', desc: lv => `三选一高稀有度概率提升 (Lv${lv})`, max: 10, cost: lv => 30 + lv * 30 },
+}
+
 export const RARITIES = ['white', 'blue', 'purple', 'gold'] as const
 export type Rarity = typeof RARITIES[number]
 export const RARITY_WEIGHT = [50, 28, 16, 6]

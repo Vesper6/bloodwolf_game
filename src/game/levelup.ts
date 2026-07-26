@@ -14,11 +14,18 @@ export interface CardOption {
   apply: (g: Game) => void
 }
 
-function rollRarity(): { rarity: Rarity; idx: number } {
-  const total = RARITY_WEIGHT.reduce((a, b) => a + b, 0)
+function rollRarity(luck: number): { rarity: Rarity; idx: number } {
+  // 狼运天赋：每级为蓝/紫/金增加权重
+  const weights = [
+    RARITY_WEIGHT[0],
+    RARITY_WEIGHT[1] + luck * 1.5,
+    RARITY_WEIGHT[2] + luck * 1.0,
+    RARITY_WEIGHT[3] + luck * 0.5,
+  ]
+  const total = weights.reduce((a, b) => a + b, 0)
   let r = Math.random() * total
-  for (let i = 0; i < RARITY_WEIGHT.length; i++) {
-    r -= RARITY_WEIGHT[i]
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]
     if (r <= 0) return { rarity: RARITIES[i], idx: i }
   }
   return { rarity: 'white', idx: 0 }
@@ -121,7 +128,7 @@ export function generateOptions(g: Game): CardOption[] {
       if (r <= 0) {
         const def = PASSIVES[key]
         const tag = PASSIVE_TAG[key]
-        const { rarity, idx } = rollRarity()
+        const { rarity, idx } = rollRarity(p.luck)
         const value = def.values[idx]
         const lv = p.passiveLv[key] ?? 0
         return {

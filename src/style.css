@@ -92,6 +92,35 @@ button {
 }
 button:hover { filter: brightness(1.25); }
 
+/* 角色选择 */
+#char-grid { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; max-width: 760px; }
+.char-opt {
+  width: 172px; padding: 12px 12px; border-radius: 10px; cursor: pointer; text-align: left;
+  border: 2px solid #444; background: rgba(24,12,18,.8); transition: all .12s;
+}
+.char-opt:hover { transform: translateY(-3px); }
+.char-opt.sel { border-color: #ff5b5b; box-shadow: 0 0 16px rgba(255,80,80,.4); background: rgba(50,12,20,.9); }
+.char-opt .co-name { font-size: 16px; color: #ff9c6b; font-weight: 700; }
+.char-opt .co-role { font-size: 11px; color: #9a8; margin: 2px 0 6px; }
+.char-opt .co-desc { font-size: 11px; line-height: 1.55; color: #cbb; }
+.char-opt .co-skill { font-size: 11px; color: #c98aff; margin-top: 5px; }
+
+/* 血月等级 / 天赋 */
+.meta-row { display: flex; gap: 18px; align-items: center; margin-top: 16px; flex-wrap: wrap; justify-content: center; }
+.moon-select { font-size: 15px; color: #ff8a8a; display: flex; align-items: center; gap: 8px; }
+#moon-lv { font-size: 20px; font-weight: 700; color: #ffce6b; min-width: 28px; text-align: center; }
+.tiny-btn { margin: 0; padding: 2px 12px; font-size: 16px; letter-spacing: 0; border-radius: 6px; }
+#crystal-count { color: #ff6ab0; font-size: 15px; }
+#talent-panel {
+  display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; justify-content: center;
+  padding: 12px; border: 1px solid rgba(255,110,180,.35); border-radius: 10px; background: rgba(30,8,20,.75);
+}
+.talent-btn {
+  margin: 0; padding: 8px 14px; font-size: 13px; letter-spacing: 1px;
+  background: linear-gradient(180deg, #6a2050, #451535); border-color: #e05a9a;
+}
+.talent-btn:disabled { opacity: .45; cursor: not-allowed; }
+
 .mp-row { display: flex; gap: 10px; margin-top: 14px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .mp-btn { margin-top: 0; padding: 9px 20px; font-size: 14px; letter-spacing: 2px;
   background: linear-gradient(180deg, #2a3a6a, #1a2445); border-color: #5a7ae0; }

@@ -1,8 +1,10 @@
 import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js'
 import { Net } from '../net/net'
 import {
-  BuildingId, CFG, ENEMIES, EVOLUTIONS, EnemyKind, PASSIVES, RESONANCE_DESC, TAG_NAME, TagId, WeaponId,
+  BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, PASSIVES, RESONANCE_DESC,
+  TAG_NAME, TagId, WeaponId, moonMul,
 } from '../core/config'
+import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
 import { Building } from './buildings'
 import { Arrow, Chest, Enemy, Gem } from './entities'
@@ -81,8 +83,15 @@ export class Game {
     flash: document.getElementById('flash')!,
   }
 
-  constructor(net: Net | null = null) {
+  charId: CharId = 'rega'
+  moonLv = 1
+  private meta: MetaData = loadMeta()
+  private victoryAnnounced = false
+
+  constructor(net: Net | null = null, charId: CharId = 'rega', moonLv = 1) {
     this.net = net
+    this.charId = charId
+    this.moonLv = moonLv
     this.app = new Application({
       resizeTo: window,
       background: 0x0a0508,
@@ -95,11 +104,11 @@ export class Game {
     this.app.stage.addChild(this.bg)
     this.app.stage.addChild(this.world)
 
-    this.player = new Player(this.tex.player, () => this.tryRage())
+    this.player = new Player(this.tex.player, () => this.trySkill())
     this.world.addChild(this.player.sprite)
     this.world.addChild(this.fx.layer)
 
-    this.addWeapon('claw') // 雷加初始武器
+    this.setupCharacter()
     this.el.hud.classList.remove('hidden')
     ;(window as unknown as Record<string, unknown>).__game = this // 调试/自动化测试入口
 
@@ -109,6 +118,76 @@ export class Game {
       const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05)
       this.frame(dt)
     })
+  }
+
+  // ------------------------------------------------------------ 角色与局外成长（M3）
+
+  private setupCharacter(): void {
+    const p = this.player
+    const def = CHARS[this.charId]
+    p.charId = this.charId
+
+    // 局外血脉天赋
+    p.atkPct += talentLv(this.meta, 'atk') * 2
+    p.maxHp += talentLv(this.meta, 'hp') * 10
+    p.hp = p.maxHp
+    p.movePct += talentLv(this.meta, 'speed')
+    p.luck = talentLv(this.meta, 'luck')
+
+    // 角色被动
+    switch (this.charId) {
+      case 'vera': p.critChance += 10; p.hastePct += 15; break
+      case 'vivi': p.buildDmgPct += 40; break
+      case 'kane': p.areaMul = 1.3; break
+    }
+
+    this.addWeapon(def.weapon)
+    if (def.building) this.placeBuilding(def.building)
+
+    document.getElementById('energy-text')!.textContent = `${def.skill.name} [空格]`
+  }
+
+  /** 主动技能（空格），能量满释放 */
+  trySkill(): void {
+    if (this.state !== 'running' || this.downed) return
+    const p = this.player
+    if (this.charId === 'rega') {
+      if (p.startRage()) { this.flash(); this.shake = 10 }
+      return
+    }
+    if (p.energy < CFG.rage.energyMax) return
+    p.energy = 0
+    this.flash()
+    this.shake = 14
+    switch (this.charId) {
+      case 'vera': {
+        // 月影齐射：16 向穿透箭
+        const bow = p.weapons.find(w => w.id === 'bow')
+        const dmg = (bow?.dmg ?? 22) * 2
+        for (let i = 0; i < 16; i++) {
+          this.spawnArrow(p.x, p.y, (i / 16) * Math.PI * 2, dmg, 6)
+        }
+        break
+      }
+      case 'vivi':
+        // 快速筑造：免费放置/升级哨塔
+        this.placeBuilding('turret')
+        break
+      case 'kane': {
+        // 血月陨落：全屏陨石
+        const orb = p.weapons.find(w => w.id === 'orb')
+        const dmg = (orb?.dmg ?? 9) * 6
+        for (const e of [...this.enemies]) {
+          if (!e.alive) continue
+          if (dist2(e.x, e.y, p.x, p.y) < 700 ** 2) {
+            this.fx.explosion(e.x, e.y, 60)
+            this.dealDamage(e, dmg)
+          }
+        }
+        this.hitstop = 0.08
+        break
+      }
+    }
   }
 
   // ------------------------------------------------------------ 联机（M2：服务器怪物权威 + 消息同步）
@@ -294,7 +373,7 @@ export class Game {
       net.sendState({
         x: Math.round(p.x), y: Math.round(p.y),
         hp: Math.round(p.hp), maxHp: p.maxHp,
-        level: p.level, downed: this.downed, name: '雷加',
+        level: p.level, downed: this.downed, name: CHARS[this.charId].name,
       })
       net.sendHits(this.hitQueue)
       this.hitQueue = []
@@ -350,7 +429,17 @@ export class Game {
     if (this.state === 'levelup' && !this.net) return
 
     this.time += dt
-    if (!this.net && this.time >= CFG.winTime) { this.end(true); return }
+    // 单机：达成生存目标后进入无尽模式（不结束，怪物继续膨胀）
+    if (!this.net && this.time >= CFG.winTime && !this.victoryAnnounced) {
+      this.victoryAnnounced = true
+      // 解锁立即落存档（防中途关页面丢进度），血晶奖励在结算时发放
+      if (this.moonLv >= this.meta.moonUnlocked && this.meta.moonUnlocked < 30) {
+        this.meta.moonUnlocked = this.moonLv + 1
+        saveMeta(this.meta)
+      }
+      this.flash()
+      this.announce(`🌕 血月退散！血月等级 ${this.moonLv} 通关 · 进入无尽模式`, false, true)
+    }
 
     if (!this.downed) {
       this.player.update(dt)
@@ -436,8 +525,9 @@ export class Game {
     const e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind])
     e.sprite.texture = this.tex.enemy[kind]
     const min = this.time / 60
-    const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, min)
-    const dmgMul = 1 + min * CFG.enemyDmgGrowthPerMin
+    // 血月等级压制（GDD 8.3）：血量全额倍率，伤害温和递增
+    const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, min) * moonMul(this.moonLv)
+    const dmgMul = (1 + min * CFG.enemyDmgGrowthPerMin) * (1 + (this.moonLv - 1) * 0.15)
     const ang = Math.random() * Math.PI * 2
     const dist = Math.max(this.app.screen.width, this.app.screen.height) / 2 + 80
     e.init(kind, this.player.x + Math.cos(ang) * dist, this.player.y + Math.sin(ang) * dist, hpMul, dmgMul)
@@ -573,8 +663,10 @@ export class Game {
       mul = (1 + (p.atkPct / 100) * inherit) * (1 + p.buildDmgPct / 100)
     } else {
       mul = 1 + p.atkPct / 100
-      // 雷加被动：血量越低伤害越高（最高 +150%）
-      mul *= 1 + CFG.player.lowHpDmgBonus * (1 - Math.max(0, p.hp) / p.maxHp)
+      // 雷加专属被动：血量越低伤害越高（最高 +150%）
+      if (this.charId === 'rega') {
+        mul *= 1 + CFG.player.lowHpDmgBonus * (1 - Math.max(0, p.hp) / p.maxHp)
+      }
     }
     // 嗜血共鸣 VII
     if (tags.blood >= 7 && p.hp < p.maxHp * 0.5) mul *= 1.4
@@ -828,16 +920,6 @@ export class Game {
     this.el.flash.classList.add('on')
   }
 
-  // ------------------------------------------------------------ 血怒
-
-  tryRage(): void {
-    if (this.state !== 'running') return
-    if (this.player.startRage()) {
-      this.flash()
-      this.shake = 10
-    }
-  }
-
   // ------------------------------------------------------------ 升级三选一
 
   private openLevelUp(): void {
@@ -873,8 +955,10 @@ export class Game {
     this.el.lvText.textContent = `Lv.${p.level}`
     this.el.energyBar.style.width = `${(p.energy / CFG.rage.energyMax) * 100}%`
     this.el.energyWrap.classList.toggle('ready', p.energy >= CFG.rage.energyMax || p.raging)
+    const skillName = CHARS[this.charId].skill.name
     document.getElementById('energy-text')!.textContent =
-      p.raging ? `血怒中 ${p.rageTimer.toFixed(0)}s` : p.energy >= CFG.rage.energyMax ? '血怒就绪 [空格]' : '血怒 [空格]'
+      p.raging ? `${skillName}中 ${p.rageTimer.toFixed(0)}s`
+        : p.energy >= CFG.rage.energyMax ? `${skillName}就绪 [空格]` : `${skillName} [空格]`
 
     const weaponText = p.weapons
       .map(w => {
@@ -899,14 +983,19 @@ export class Game {
   }
 
   private end(victory: boolean): void {
+    if (this.state === 'end') return
     this.state = 'end'
+    const won = victory || this.victoryAnnounced
+    const gained = grantReward(this.meta, this.kills, this.time, won, this.moonLv)
     const title = document.getElementById('end-title')!
-    title.textContent = victory ? '血月退散 · 胜利' : '你倒下了'
-    title.classList.toggle('victory', victory)
+    title.textContent = won ? '血月退散 · 胜利' : '你倒下了'
+    title.classList.toggle('victory', won)
     document.getElementById('end-stats')!.innerHTML = `
+      ${CHARS[this.charId].name} · 血月等级 ${this.moonLv}<br/>
       生存时间 <b>${fmtTime(this.time)}</b><br/>
       击杀 <b>${this.kills}</b> · 等级 <b>Lv.${this.player.level}</b><br/>
-      总伤害 <b>${fmtNum(this.totalDamage)}</b> · 最高单击 <b>${fmtNum(this.maxHit)}</b>
+      总伤害 <b>${fmtNum(this.totalDamage)}</b> · 最高单击 <b>${fmtNum(this.maxHit)}</b><br/>
+      获得血晶 <b>+${gained}</b>${won && this.moonLv < 30 ? ` · 解锁血月等级 ${this.moonLv + 1}` : ''}
     `
     document.getElementById('end-screen')!.classList.remove('hidden')
   }

@@ -40,7 +40,7 @@ export class ClawWeapon extends Weapon {
     this.timer = 0
 
     const p = g.player
-    const range = 130 + 35 * (this.level - 1)
+    const range = (130 + 35 * (this.level - 1)) * p.areaMul
     const arc = ((120 + 40 * (this.level - 1)) * Math.PI) / 180
     const ang = p.facingAngle
     for (const e of g.enemies) {
@@ -85,7 +85,7 @@ export class OrbWeapon extends Weapon {
 
   update(g: Game, dt: number): void {
     this.angle += dt * 2.4 * (0.8 + 0.2 * g.player.hasteMul)
-    const radius = 82 + 14 * this.level
+    const radius = (82 + 14 * this.level) * g.player.areaMul
     const p = g.player
 
     while (this.sprites.length < this.count) {
@@ -136,7 +136,7 @@ export class EvoClawWeapon extends Weapon {
 
   update(g: Game, dt: number): void {
     const p = g.player
-    const radius = 180
+    const radius = 180 * p.areaMul
 
     if (!this.ring) {
       this.ring = new Graphics()
@@ -229,7 +229,7 @@ export class EvoOrbWeapon extends Weapon {
   update(g: Game, dt: number): void {
     const p = g.player
     const count = 4
-    const radius = 120
+    const radius = 120 * p.areaMul
     this.angle += dt * 2.1
 
     while (this.sprites.length < count) {
@@ -253,10 +253,11 @@ export class EvoOrbWeapon extends Weapon {
           e.orbCd = 0.45
           g.dealDamage(e, this.dmg)
           // 连锁爆炸
-          g.fx.explosion(e.x, e.y, 95)
+          const boom = 95 * p.areaMul
+          g.fx.explosion(e.x, e.y, boom)
           for (const e2 of g.enemies) {
             if (!e2.alive || e2 === e) continue
-            if (dist2(e.x, e.y, e2.x, e2.y) < (95 + e2.r) ** 2) g.dealDamage(e2, this.dmg * 0.5)
+            if (dist2(e.x, e.y, e2.x, e2.y) < (boom + e2.r) ** 2) g.dealDamage(e2, this.dmg * 0.5)
           }
           break
         }
