@@ -1,5 +1,6 @@
 import { CHARS, CharId, MAPS, MapId, MOON_MAX, TALENTS, WEAPON_INFO } from './core/config'
 import { buyTalent, loadMeta, talentLv } from './core/meta'
+import { loadAssets } from './game/assets'
 import { Game } from './game/Game'
 import { Net } from './net/net'
 
@@ -88,8 +89,9 @@ if (urlRoom) {
   mpStatus.textContent = `检测到邀请链接，选好角色后点「加入房间」进入 ${urlRoom}`
 }
 
-function begin(net: Net | null): void {
+async function begin(net: Net | null): Promise<void> {
   startScreen.classList.add('hidden')
+  await loadAssets() // 美术素材（缺失自动回退占位图）
   new Game(net, selectedChar, net ? (net.moonLv || 1) : moonLv, mapId)
   if (net) history.replaceState(null, '', `?room=${net.roomId}`)
 }

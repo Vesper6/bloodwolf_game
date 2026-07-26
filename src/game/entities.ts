@@ -1,8 +1,8 @@
-import { Sprite, Texture } from 'pixi.js'
+import { AnimatedSprite, Sprite, Texture } from 'pixi.js'
 import { ENEMIES, EnemyKind } from '../core/config'
 
 export class Enemy {
-  sprite: Sprite
+  sprite: AnimatedSprite
   x = 0; y = 0
   /** 联机模式：服务器快照目标位置（插值用） */
   tx = 0; ty = 0
@@ -18,8 +18,17 @@ export class Enemy {
   poisonTick = 0
 
   constructor(tex: Texture) {
-    this.sprite = new Sprite(tex)
+    this.sprite = new AnimatedSprite([tex])
     this.sprite.anchor.set(0.5)
+  }
+
+  /** 换肤：支持序列帧动画（美术素材替换适配） */
+  setSkin(fs: Texture[]): void {
+    this.sprite.textures = fs
+    if (fs.length > 1) {
+      this.sprite.animationSpeed = 0.12
+      this.sprite.play()
+    }
   }
 
   init(kind: EnemyKind, x: number, y: number, hpMul: number, dmgMul: number): void {

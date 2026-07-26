@@ -1,8 +1,14 @@
-import { Sprite, Texture } from 'pixi.js'
+import { AnimatedSprite, Texture } from 'pixi.js'
 import { CFG, CharId, TagId } from '../core/config'
 import { Weapon } from './weapons'
 
 export class Player {
+  sprite!: AnimatedSprite
+  /** 行走动画（有序列帧素材时启用） */
+  setSkin(fs: Texture[]): void {
+    this.sprite.textures = fs
+    if (fs.length > 1) { this.sprite.animationSpeed = 0.16; this.sprite.play() }
+  }
   charId: CharId = 'rega'
   /** 范围乘数（卡恩被动） */
   areaMul = 1
@@ -10,7 +16,6 @@ export class Player {
   luck = 0
   /** 无敌时间（戈登护罩等） */
   invulnTimer = 0
-  sprite: Sprite
   x = 0
   y = 0
   hp = CFG.player.maxHp
@@ -49,7 +54,7 @@ export class Player {
   private touchDir = { x: 0, y: 0 }
 
   constructor(tex: Texture, onRage: () => void) {
-    this.sprite = new Sprite(tex)
+    this.sprite = new AnimatedSprite([tex])
     this.sprite.anchor.set(0.5)
 
     window.addEventListener('keydown', e => {
@@ -140,6 +145,9 @@ export class Player {
       this.y += dy * spd * dt
       this.facingAngle = Math.atan2(dy, dx)
       this.sprite.scale.x = dx < 0 ? -1 : 1
+      if (this.sprite.textures.length > 1 && !this.sprite.playing) this.sprite.play()
+    } else if (this.sprite.textures.length > 1 && this.sprite.playing) {
+      this.sprite.gotoAndStop(0) // 待机停帧
     }
 
     if (this.raging) {

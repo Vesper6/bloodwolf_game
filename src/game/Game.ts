@@ -13,6 +13,7 @@ import { generateOptions, hideLevelUpUI, showLevelUpUI } from './levelup'
 import { Player } from './player'
 import { Textures, makeGroundTexture, makeTextures } from './textures'
 import { FusedWeapon, Weapon, createEvolvedWeapon, createWeapon } from './weapons'
+import { getFrames, getTex } from './assets'
 
 type GameState = 'running' | 'levelup' | 'end'
 
@@ -106,7 +107,17 @@ export class Game {
     document.getElementById('game-root')!.appendChild(this.app.view as HTMLCanvasElement)
 
     this.tex = makeTextures(this.app)
-    this.bg = new TilingSprite(makeGroundTexture(this.app, MAPS[this.mapId]), 64, 64)
+    // 美术素材热替换（有则覆盖占位图）
+    this.tex.gem = getTex('gem') ?? this.tex.gem
+    this.tex.gemBig = getTex('gem_big') ?? this.tex.gemBig
+    this.tex.arrow = getTex('arrow') ?? this.tex.arrow
+    this.tex.orb = getTex('orb') ?? this.tex.orb
+    this.tex.chest = getTex('chest') ?? this.tex.chest
+    for (const b of ['turret', 'totem', 'siphon'] as const) {
+      this.tex.building[b] = getTex('building_' + b) ?? this.tex.building[b]
+    }
+    const groundTex = getTex('ground_' + this.mapId) ?? makeGroundTexture(this.app, MAPS[this.mapId])
+    this.bg = new TilingSprite(groundTex, 64, 64)
     this.app.stage.addChild(this.bg)
     this.app.stage.addChild(this.world)
 
@@ -115,6 +126,8 @@ export class Game {
     this.world.addChild(this.fx.layer)
 
     this.setupCharacter()
+    const pf = getFrames('player_' + this.charId)
+    if (pf) this.player.setSkin(pf)
     this.el.hud.classList.remove('hidden')
     ;(window as unknown as Record<string, unknown>).__game = this // 调试/自动化测试入口
 
@@ -330,7 +343,7 @@ export class Game {
       let e = this.enemyById.get(id)
       if (!e) {
         e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind])
-        e.sprite.texture = this.tex.enemy[kind]
+        e.setSkin(getFrames('enemy_' + kind) ?? [this.tex.enemy[kind]])
         const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, this.time / 60)
         e.init(kind, x, y, hpMul, 1 + (this.time / 60) * CFG.enemyDmgGrowthPerMin)
         e.netId = id
@@ -570,7 +583,7 @@ export class Game {
 
   private spawnEnemy(kind: EnemyKind): Enemy | null {
     const e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind])
-    e.sprite.texture = this.tex.enemy[kind]
+    e.setSkin(getFrames('enemy_' + kind) ?? [this.tex.enemy[kind]])
     const min = this.time / 60
     // 血月等级压制（GDD 8.3）：血量全额倍率，伤害温和递增
     const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, min) * moonMul(this.moonLv)
