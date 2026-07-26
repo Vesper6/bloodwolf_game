@@ -255,6 +255,21 @@ export const SHOP = {
   bossGold: 40,
 }
 
+/** ---------- 局内道具（击杀掉落，触碰即时生效） ---------- */
+export type PickupId = 'magnet' | 'bomb' | 'potion' | 'freeze' | 'hourglass' | 'goldbag'
+
+export const PICKUPS: Record<PickupId, { name: string; desc: string }> = {
+  magnet:    { name: '血月磁石', desc: '吸取全场经验与金币' },
+  bomb:      { name: '血月炸弹', desc: '全屏怪物受到重创' },
+  potion:    { name: '狼血药瓶', desc: '回复30%最大生命' },
+  freeze:    { name: '寒冰结晶', desc: '冻结全场敌人3秒' },
+  hourglass: { name: '狂热沙漏', desc: '技能能量+50' },
+  goldbag:   { name: '鼓囊金袋', desc: '金币+25' },
+}
+
+/** 杂兵掉道具概率；精英必掉一个随机道具 */
+export const PICKUP_DROP_CHANCE = 0.012
+
 /** ---------- 血脉天赋（局外成长，GDD 11章） ---------- */
 export interface TalentDef { name: string; desc: (lv: number) => string; max: number; cost: (lv: number) => number }
 

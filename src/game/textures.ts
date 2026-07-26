@@ -1,5 +1,5 @@
 import { Application, Graphics, Texture } from 'pixi.js'
-import { BuildingId, ENEMIES, EnemyKind } from '../core/config'
+import { BuildingId, ENEMIES, EnemyKind, PickupId } from '../core/config'
 
 export interface Textures {
   player: Texture
@@ -12,6 +12,7 @@ export interface Textures {
   chest: Texture
   coin: Texture
   shadow: Texture
+  pickup: Record<PickupId, Texture>
   enemy: Record<EnemyKind, Texture>
   enemyFrames: Record<EnemyKind, Texture[]>
   building: Record<BuildingId, Texture>
@@ -120,6 +121,45 @@ export function makeTextures(app: Application): Textures {
   coin.beginFill(0xffd24a); coin.drawCircle(0, 0, 7); coin.endFill()
   coin.beginFill(0xc89a20); coin.drawCircle(0, 0, 4); coin.endFill()
 
+  // 局内道具图标
+  const mk = (draw: (g: Graphics) => void) => {
+    const g = new Graphics()
+    g.beginFill(0xffffff, 0.12); g.drawCircle(0, 0, 14); g.endFill()
+    draw(g)
+    return g
+  }
+  const pk_magnet = mk(g => {
+    g.lineStyle(4, 0xff4d4d); g.arc(0, 2, 7, Math.PI, 0)
+    g.lineStyle(0)
+    g.beginFill(0xd0d0e0); g.drawRect(-9, 0, 4, 7); g.drawRect(5, 0, 4, 7); g.endFill()
+  })
+  const pk_bomb = mk(g => {
+    g.beginFill(0x2a2a34); g.drawCircle(0, 2, 8); g.endFill()
+    g.lineStyle(2, 0xc89a20); g.moveTo(3, -5); g.lineTo(7, -10)
+    g.lineStyle(0); g.beginFill(0xff7a2e); g.drawCircle(7, -10, 2.5); g.endFill()
+  })
+  const pk_potion = mk(g => {
+    g.beginFill(0xff3a5a); g.drawRoundedRect(-5, -3, 10, 11, 3); g.endFill()
+    g.beginFill(0xd0d0e0); g.drawRect(-2, -8, 4, 5); g.endFill()
+  })
+  const pk_freeze = mk(g => {
+    g.beginFill(0x8ae8ff)
+    g.moveTo(0, -9); g.lineTo(5, 0); g.lineTo(0, 9); g.lineTo(-5, 0); g.closePath()
+    g.endFill()
+    g.lineStyle(2, 0xd8f8ff); g.moveTo(-7, 0); g.lineTo(7, 0)
+  })
+  const pk_hourglass = mk(g => {
+    g.beginFill(0xc06aff)
+    g.moveTo(-6, -8); g.lineTo(6, -8); g.lineTo(0, 0); g.closePath()
+    g.moveTo(-6, 8); g.lineTo(6, 8); g.lineTo(0, 0); g.closePath()
+    g.endFill()
+  })
+  const pk_goldbag = mk(g => {
+    g.beginFill(0xc89a20); g.drawCircle(0, 2, 8); g.endFill()
+    g.beginFill(0x8a6a10); g.drawRect(-3, -8, 6, 4); g.endFill()
+    g.beginFill(0xffd24a); g.drawCircle(0, 2, 4); g.endFill()
+  })
+
   // 血月宝箱
   const cg = new Graphics()
   cg.beginFill(0xd8264a, 0.25); cg.drawCircle(0, 0, 26); cg.endFill()
@@ -160,6 +200,10 @@ export function makeTextures(app: Application): Textures {
     chest: gen(cg),
     coin: gen(coin),
     shadow: gen(shg),
+    pickup: {
+      magnet: gen(pk_magnet), bomb: gen(pk_bomb), potion: gen(pk_potion),
+      freeze: gen(pk_freeze), hourglass: gen(pk_hourglass), goldbag: gen(pk_goldbag),
+    },
     enemy,
     enemyFrames,
     building: { turret: gen(tg), totem: gen(og2), siphon: gen(sg) },

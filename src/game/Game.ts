@@ -2,8 +2,8 @@ import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pi
 import { Net } from '../net/net'
 import {
   BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, MAPS, MapId, PASSIVES,
-  BOSSES, BossKind, ELEMENTS, ELEMENT_CYCLE, ElementId, RESONANCE_DESC, SHOP, TAG_NAME, TagId,
-  WEAPON_INFO, WeaponId, moonMul,
+  BOSSES, BossKind, ELEMENTS, ELEMENT_CYCLE, ElementId, PICKUPS, PICKUP_DROP_CHANCE, PickupId,
+  RESONANCE_DESC, SHOP, TAG_NAME, TagId, WEAPON_INFO, WeaponId, moonMul,
 } from '../core/config'
 import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
@@ -66,6 +66,7 @@ export class Game {
   private shopTimer = 0
   coins: Gem[] = []
   private coinPool: Gem[] = []
+  pickups: { sprite: Sprite; x: number; y: number; id: PickupId; life: number }[] = []
   combo = 0
   private comboTimer = 0
   totalDamage = 0
@@ -581,6 +582,7 @@ export class Game {
     this.updateArrows(dt)
     this.updateGems(dt)
     this.updateCoins(dt)
+    this.updatePickups(dt)
     this.updateShop(dt)
     this.updateBuildings(dt)
     this.updateChests(dt)
@@ -1061,6 +1063,7 @@ export class Game {
     this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + CFG.rage.energyPerKill)
     this.dropGem(e.x, e.y, Math.round(e.xp * (1 + (this.time / 60) * CFG.gemValueGrowthPerMin)))
     this.dropCoin(e)
+    this.maybeDropPickup(e)
 
     // 嗜血共鸣 III：击杀回血
     if (this.player.tags.blood >= 3) this.player.heal(1)
@@ -1137,6 +1140,77 @@ export class Game {
       this.state = 'running'
       // 商店期间攒的升级接着弹
     })
+  }
+
+  // ------------------------------------------------------------ 局内道具
+
+  private maybeDropPickup(e: Enemy): void {
+    const roll = e.kind === 'elite' || Math.random() < PICKUP_DROP_CHANCE
+    if (!roll || this.pickups.length >= 6) return
+    const ids = Object.keys(PICKUPS) as PickupId[]
+    const id = ids[Math.floor(Math.random() * ids.length)]
+    const sprite = new Sprite(this.tex.pickup[id])
+    sprite.anchor.set(0.5)
+    sprite.position.set(e.x, e.y)
+    this.world.addChild(sprite)
+    this.pickups.push({ sprite, x: e.x, y: e.y, id, life: 30 })
+  }
+
+  private updatePickups(dt: number): void {
+    const p = this.player
+    for (let i = this.pickups.length - 1; i >= 0; i--) {
+      const pk = this.pickups[i]
+      pk.life -= dt
+      pk.sprite.scale.set(1 + 0.18 * Math.sin(this.time * 5 + i))
+      pk.sprite.alpha = pk.life < 5 ? 0.4 + 0.6 * Math.abs(Math.sin(this.time * 8)) : 1
+      if (pk.life <= 0) {
+        pk.sprite.destroy()
+        this.pickups.splice(i, 1)
+        continue
+      }
+      if (dist2(pk.x, pk.y, p.x, p.y) < 38 ** 2) {
+        this.applyPickup(pk.id)
+        pk.sprite.destroy()
+        this.pickups.splice(i, 1)
+      }
+    }
+  }
+
+  private applyPickup(id: PickupId): void {
+    const p = this.player
+    this.announce(`✨ ${PICKUPS[id].name}：${PICKUPS[id].desc}`)
+    switch (id) {
+      case 'magnet':
+        for (const g of this.gems) g.attracted = true
+        for (const c of this.coins) c.attracted = true
+        break
+      case 'bomb': {
+        this.flash()
+        this.shake = 16
+        const dmg = 80 * Math.pow(1.13, this.time / 60) * moonMul(this.moonLv)
+        for (const e of [...this.enemies]) {
+          if (e.alive && dist2(e.x, e.y, p.x, p.y) < 700 ** 2) {
+            this.fx.explosion(e.x, e.y, 50)
+            this.dealDamage(e, dmg)
+          }
+        }
+        break
+      }
+      case 'potion':
+        p.heal(p.maxHp * 0.3)
+        this.fx.healText(p.x, p.y, p.maxHp * 0.3)
+        break
+      case 'freeze':
+        for (const e of this.enemies) if (e.alive) { e.stunT = Math.max(e.stunT, 3); e.sprite.tint = 0x8ae8ff }
+        this.flash()
+        break
+      case 'hourglass':
+        p.energy = Math.min(CFG.rage.energyMax, p.energy + 50)
+        break
+      case 'goldbag':
+        this.gold += this.charId === 'laojin' ? 38 : 25
+        break
+    }
   }
 
   // ------------------------------------------------------------ 经验宝石
