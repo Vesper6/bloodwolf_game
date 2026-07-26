@@ -1,4 +1,5 @@
-import { Application, Container, TilingSprite } from 'pixi.js'
+import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js'
+import { Net } from '../net/net'
 import {
   BuildingId, CFG, ENEMIES, EVOLUTIONS, EnemyKind, PASSIVES, RESONANCE_DESC, TAG_NAME, TagId, WeaponId,
 } from '../core/config'
@@ -12,6 +13,14 @@ import { Textures, makeGroundTexture, makeTextures } from './textures'
 import { Weapon, createEvolvedWeapon, createWeapon } from './weapons'
 
 type GameState = 'running' | 'levelup' | 'end'
+
+interface RemoteView {
+  sprite: Sprite
+  label: Text
+  hpBar: Graphics
+  x: number; y: number
+  state: { x: number; y: number; hp: number; maxHp: number; level: number; downed: boolean; name: string }
+}
 
 export class Game {
   app: Application
@@ -43,6 +52,17 @@ export class Game {
   private bossIdx = 0
   private boss: Enemy | null = null
 
+  // ---- 联机 ----
+  net: Net | null = null
+  private remotes = new Map<string, RemoteView>()
+  private enemyById = new Map<number, Enemy>()
+  private hitQueue: [number, number][] = []
+  private stateTimer = 0
+  downed = false
+  private reviveTarget: string | null = null
+  private reviveProgress = 0
+  private pendingBoss: { id: number; idx: number } | null = null
+
   // HUD 元素缓存
   private el = {
     hud: document.getElementById('hud')!,
@@ -61,7 +81,8 @@ export class Game {
     flash: document.getElementById('flash')!,
   }
 
-  constructor() {
+  constructor(net: Net | null = null) {
+    this.net = net
     this.app = new Application({
       resizeTo: window,
       background: 0x0a0508,
@@ -82,10 +103,235 @@ export class Game {
     this.el.hud.classList.remove('hidden')
     ;(window as unknown as Record<string, unknown>).__game = this // 调试/自动化测试入口
 
+    if (net) this.bindNet(net)
+
     this.app.ticker.add(() => {
       const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05)
       this.frame(dt)
     })
+  }
+
+  // ------------------------------------------------------------ 联机（M2：服务器怪物权威 + 消息同步）
+
+  private bindNet(net: Net): void {
+    this.announce(`已连接房间 ${net.roomId} · 分享房号邀请队友`, false, true)
+    net.bind({
+      onInit: d => {
+        this.time = d.time
+        for (let i = 0; i < d.gems.length; i += 4) this.netSpawnGem(d.gems[i], d.gems[i + 1], d.gems[i + 2], d.gems[i + 3])
+        for (let i = 0; i < d.chests.length; i += 3) this.netSpawnChest(d.chests[i], d.chests[i + 1], d.chests[i + 2])
+      },
+      onSnap: data => this.applySnapshot(data),
+      onDead: d => {
+        const e = this.enemyById.get(d.id)
+        if (e) {
+          e.x = d.x; e.y = d.y
+          this.netKillEnemy(e)
+        }
+      },
+      onGemAdd: d => this.netSpawnGem(d.id, d.x, d.y, d.v),
+      onGemRemove: d => {
+        const idx = this.gems.findIndex(g => g.netId === d.id)
+        if (idx >= 0) {
+          const g = this.gems[idx]
+          this.world.removeChild(g.sprite)
+          g.sprite.visible = false
+          this.gems.splice(idx, 1)
+          if (this.gemPool.length < 100) this.gemPool.push(g)
+        }
+      },
+      onXp: d => this.player.gainXP(d.v), // 经验全队共享
+      onChestAdd: d => this.netSpawnChest(d.id, d.x, d.y),
+      onChestRemove: d => {
+        const idx = this.chests.findIndex(c => c.netId === d.id)
+        if (idx >= 0) {
+          const c = this.chests[idx]
+          this.world.removeChild(c.sprite)
+          c.sprite.destroy()
+          this.chests.splice(idx, 1)
+          if (d.by === this.net!.id) this.openChest(c.x, c.y)
+        }
+      },
+      onBoss: d => {
+        this.pendingBoss = d
+        this.el.bossName.textContent = d.idx === 1 ? '血月魔王 · 加尔诺' : '永夜狼王 · 弗恩里'
+        this.el.bossWrap.classList.remove('hidden')
+        this.flash()
+      },
+      onPState: d => this.updateRemote(d),
+      onPLeave: d => this.removeRemote(d.id),
+      onRevived: d => {
+        if (d.id === this.net!.id) {
+          this.downed = false
+          this.player.hp = this.player.maxHp * 0.5
+          this.announce('你被队友救起了！', false, true)
+        } else {
+          const r = this.remotes.get(d.id)
+          if (r) r.state.downed = false
+          this.announce('队友被救起')
+        }
+      },
+      onOver: d => this.end(d.victory),
+    })
+  }
+
+  private netSpawnGem(netId: number, x: number, y: number, v: number): void {
+    if (this.gems.some(g => g.netId === netId)) return
+    const g = this.gemPool.pop() ?? new Gem(this.tex.gem)
+    g.sprite.texture = v >= 10 ? this.tex.gemBig : this.tex.gem
+    g.init(x, y, v)
+    g.netId = netId
+    this.world.addChildAt(g.sprite, 0)
+    this.gems.push(g)
+  }
+
+  private netSpawnChest(netId: number, x: number, y: number): void {
+    if (this.chests.some(c => c.netId === netId)) return
+    const c = new Chest(this.tex.chest, x, y)
+    c.netId = netId
+    this.world.addChild(c.sprite)
+    this.chests.push(c)
+  }
+
+  /** 应用服务器怪物快照：[id, kindIdx, x, y, hp%] */
+  private applySnapshot(data: number[]): void {
+    const KINDS: EnemyKind[] = ['bat', 'skeleton', 'boar', 'elite', 'boss']
+    const seen = new Set<number>()
+    for (let i = 0; i < data.length; i += 5) {
+      const id = data[i]
+      const kind = KINDS[data[i + 1]] ?? 'bat'
+      const x = data[i + 2], y = data[i + 3], hpPct = data[i + 4]
+      seen.add(id)
+      let e = this.enemyById.get(id)
+      if (!e) {
+        e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind])
+        e.sprite.texture = this.tex.enemy[kind]
+        const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, this.time / 60)
+        e.init(kind, x, y, hpMul, 1 + (this.time / 60) * CFG.enemyDmgGrowthPerMin)
+        e.netId = id
+        this.world.addChildAt(e.sprite, 0)
+        this.enemies.push(e)
+        this.enemyById.set(id, e)
+        if (this.pendingBoss && this.pendingBoss.id === id) {
+          this.boss = e
+          e.maxHp = e.hp
+          this.pendingBoss = null
+        }
+      }
+      e.tx = x; e.ty = y
+      // 服务器血量权威（百分比纠偏）
+      e.hp = Math.min(e.hp, (hpPct / 100) * e.maxHp + 1)
+    }
+    // 快照中消失且未收到死亡事件的怪物：静默移除
+    for (const [id, e] of this.enemyById) {
+      if (!seen.has(id)) {
+        e.alive = false
+        this.enemyById.delete(id)
+      }
+    }
+  }
+
+  /** 联机模式下的击杀表现（死亡由服务器判定） */
+  private netKillEnemy(e: Enemy): void {
+    if (!e.alive) return
+    e.alive = false
+    this.enemyById.delete(e.netId)
+    this.kills++
+    this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + CFG.rage.energyPerKill)
+    if (this.player.tags.blood >= 3) this.player.heal(1)
+    if (e.isBoss || this.boss === e) {
+      this.boss = null
+      this.el.bossWrap.classList.add('hidden')
+      this.flash()
+      this.shake = 20
+    }
+  }
+
+  /** 倒地（联机）：等待队友救援，全灭才失败（服务器判定） */
+  private enterDowned(): void {
+    if (this.downed) return
+    this.downed = true
+    this.player.hp = 0
+    this.player.sprite.alpha = 0.35
+    this.announce('你倒下了！队友靠近 3 秒可将你救起', true)
+  }
+
+  private updateRemote(d: { id: string } & RemoteView['state']): void {
+    let r = this.remotes.get(d.id)
+    if (!r) {
+      const sprite = new Sprite(this.tex.player)
+      sprite.anchor.set(0.5)
+      sprite.tint = 0x8ab4ff // 队友蓝色调
+      const label = new Text(d.name || '狼裔', {
+        fontFamily: 'Arial', fontSize: 12, fill: 0xaaccff, stroke: 0x000000, strokeThickness: 3,
+      })
+      label.anchor.set(0.5)
+      const hpBar = new Graphics()
+      this.world.addChild(sprite, label, hpBar)
+      r = { sprite, label, hpBar, x: d.x, y: d.y, state: d }
+      this.remotes.set(d.id, r)
+      this.announce(`${d.name || '狼裔'} 加入了战斗`)
+    }
+    r.state = d
+  }
+
+  private removeRemote(id: string): void {
+    const r = this.remotes.get(id)
+    if (!r) return
+    r.sprite.destroy(); r.label.destroy(); r.hpBar.destroy()
+    this.remotes.delete(id)
+    this.announce('一名队友离开了')
+  }
+
+  private updateNet(dt: number): void {
+    const net = this.net!
+    const p = this.player
+
+    // 10Hz 上报自身状态
+    this.stateTimer += dt
+    if (this.stateTimer >= 0.1) {
+      this.stateTimer = 0
+      net.sendState({
+        x: Math.round(p.x), y: Math.round(p.y),
+        hp: Math.round(p.hp), maxHp: p.maxHp,
+        level: p.level, downed: this.downed, name: '雷加',
+      })
+      net.sendHits(this.hitQueue)
+      this.hitQueue = []
+    }
+
+    // 渲染队友（插值）
+    for (const r of this.remotes.values()) {
+      r.x += (r.state.x - r.x) * Math.min(1, dt * 10)
+      r.y += (r.state.y - r.y) * Math.min(1, dt * 10)
+      r.sprite.position.set(r.x, r.y)
+      r.sprite.alpha = r.state.downed ? 0.35 : 1
+      r.label.position.set(r.x, r.y - 34)
+      r.hpBar.clear()
+      r.hpBar.beginFill(0x000000, 0.5).drawRect(r.x - 16, r.y - 26, 32, 4).endFill()
+      r.hpBar.beginFill(r.state.downed ? 0x777777 : 0xff4d4d)
+        .drawRect(r.x - 16, r.y - 26, 32 * clamp(r.state.hp / r.state.maxHp, 0, 1), 4).endFill()
+    }
+
+    // 救援：靠近倒地队友 3 秒
+    if (!this.downed) {
+      let target: string | null = null
+      for (const [id, r] of this.remotes) {
+        if (r.state.downed && dist2(p.x, p.y, r.x, r.y) < 70 ** 2) { target = id; break }
+      }
+      if (target) {
+        if (this.reviveTarget !== target) { this.reviveTarget = target; this.reviveProgress = 0 }
+        this.reviveProgress += dt
+        if (this.reviveProgress >= 3) {
+          net.revive(target)
+          this.reviveTarget = null
+          this.reviveProgress = 0
+        }
+      } else {
+        this.reviveTarget = null
+        this.reviveProgress = 0
+      }
+    }
   }
 
   // ------------------------------------------------------------ 主循环
@@ -99,14 +345,19 @@ export class Game {
       this.updateCamera()
       return
     }
-    if (this.state !== 'running') return
+    if (this.state === 'end') return
+    // 联机模式：三选一不暂停游戏（GDD 9.2），单机则暂停
+    if (this.state === 'levelup' && !this.net) return
 
     this.time += dt
-    if (this.time >= CFG.winTime) { this.end(true); return }
+    if (!this.net && this.time >= CFG.winTime) { this.end(true); return }
 
-    this.player.update(dt)
-    for (const w of this.player.weapons) w.update(this, dt)
-    this.updateSpawner(dt)
+    if (!this.downed) {
+      this.player.update(dt)
+      for (const w of this.player.weapons) w.update(this, dt)
+    }
+    if (this.net) this.updateNet(dt)
+    else this.updateSpawner(dt)
     this.updateEnemies(dt)
     this.updateArrows(dt)
     this.updateGems(dt)
@@ -116,7 +367,7 @@ export class Game {
     this.updateCamera()
     this.updateHUD()
 
-    if (this.player.pendingLevels > 0) this.openLevelUp()
+    if (this.player.pendingLevels > 0 && this.state === 'running') this.openLevelUp()
   }
 
   private updateCamera(): void {
@@ -206,13 +457,21 @@ export class Game {
       }
       if (e.orbCd > 0) e.orbCd -= dt
 
-      const dx = p.x - e.x, dy = p.y - e.y
-      const d = Math.hypot(dx, dy) || 1
-      e.x += (dx / d) * e.speed * dt
-      e.y += (dy / d) * e.speed * dt
+      let d: number
+      if (this.net) {
+        // 联机：向服务器快照位置插值
+        e.x += (e.tx - e.x) * Math.min(1, dt * 8)
+        e.y += (e.ty - e.y) * Math.min(1, dt * 8)
+        d = Math.hypot(p.x - e.x, p.y - e.y) || 1
+      } else {
+        const dx = p.x - e.x, dy = p.y - e.y
+        d = Math.hypot(dx, dy) || 1
+        e.x += (dx / d) * e.speed * dt
+        e.y += (dy / d) * e.speed * dt
+      }
       e.sprite.position.set(e.x, e.y)
 
-      // 接触伤害（持续型，堆叠有上限）
+      // 接触伤害（持续型，堆叠有上限；倒地/选卡时免疫）
       if (d < e.r + p.radius) contactDmg += e.dmg
 
       // 磨损筑造物
@@ -220,9 +479,13 @@ export class Game {
         if (dist2(e.x, e.y, b.x, b.y) < (e.r + 26) ** 2) b.hp -= e.dmg * 0.5 * dt
       }
     }
-    if (contactDmg > 0) {
+    const invuln = this.downed || this.state === 'levelup'
+    if (contactDmg > 0 && !invuln) {
       p.hp -= Math.min(contactDmg, CFG.player.maxContactDps) * dt
-      if (p.hp <= 0) this.end(false)
+      if (p.hp <= 0) {
+        if (this.net) this.enterDowned()
+        else this.end(false)
+      }
     }
   }
 
@@ -324,6 +587,12 @@ export class Game {
     this.fx.damageText(e.x, e.y - e.r, dmg, crit)
     if (crit) { this.hitstop = Math.max(this.hitstop, 0.03); this.shake = Math.max(this.shake, 4) }
 
+    // 联机：命中上报服务器权威结算，死亡等服务器判定
+    if (this.net) {
+      this.hitQueue.push([e.netId, Math.round(dmg)])
+      return
+    }
+
     // 血怒吸血 + 嗜血共鸣 V
     let steal = 0
     if (p.raging) steal += CFG.rage.lifesteal
@@ -393,11 +662,16 @@ export class Game {
         g.y += ((p.y - g.y) / d) * spd * dt
         g.sprite.position.set(g.x, g.y)
         if (d < 24) {
-          p.gainXP(g.value)
-          this.world.removeChild(g.sprite)
-          g.sprite.visible = false
-          this.gems.splice(i, 1)
-          if (this.gemPool.length < 100) this.gemPool.push(g)
+          if (this.net) {
+            // 联机：向服务器认领，经验由服务器广播全队共享
+            if (!g.claimed) { g.claimed = true; this.net.claimGem(g.netId) }
+          } else {
+            p.gainXP(g.value)
+            this.world.removeChild(g.sprite)
+            g.sprite.visible = false
+            this.gems.splice(i, 1)
+            if (this.gemPool.length < 100) this.gemPool.push(g)
+          }
         }
       }
     }
@@ -446,10 +720,15 @@ export class Game {
       const c = this.chests[i]
       c.update(dt)
       if (dist2(c.x, c.y, p.x, p.y) < 44 ** 2) {
-        this.world.removeChild(c.sprite)
-        c.sprite.destroy()
-        this.chests.splice(i, 1)
-        this.openChest(c.x, c.y)
+        if (this.net) {
+          // 联机：先到先得，由服务器仲裁
+          if (!c.claimed) { c.claimed = true; this.net.claimChest(c.netId) }
+        } else {
+          this.world.removeChild(c.sprite)
+          c.sprite.destroy()
+          this.chests.splice(i, 1)
+          this.openChest(c.x, c.y)
+        }
       }
     }
   }
@@ -467,9 +746,13 @@ export class Game {
     // 无可进化：补给（经验爆珠 + 治疗）
     p.heal(25)
     const value = Math.max(3, Math.round(6 * (1 + (this.time / 60) * CFG.gemValueGrowthPerMin)))
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2
-      this.dropGem(x + Math.cos(a) * 40, y + Math.sin(a) * 40, value)
+    if (this.net) {
+      p.gainXP(value * 8) // 联机：宝箱经验直接入账（服务器不追踪补给宝石）
+    } else {
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        this.dropGem(x + Math.cos(a) * 40, y + Math.sin(a) * 40, value)
+      }
     }
     this.announce('血月宝箱：获得补给')
   }

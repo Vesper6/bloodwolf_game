@@ -46,7 +46,13 @@
     </div>
     <p class="controls">WASD / 方向键移动 · 空格释放血怒 · 手机端触屏拖动</p>
     <p class="goal">在无尽魔潮中生存 15 分钟</p>
-    <button id="start-btn">进入血月</button>
+    <button id="start-btn">单人 · 进入血月</button>
+    <div class="mp-row">
+      <button id="host-btn" class="mp-btn">创建联机房间</button>
+      <input id="room-input" placeholder="输入房号" maxlength="12" />
+      <button id="join-btn" class="mp-btn">加入房间</button>
+    </div>
+    <p id="mp-status" class="controls"></p>
   </div>
 
   <!-- 结算界面 -->

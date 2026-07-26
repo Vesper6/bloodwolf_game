@@ -4,6 +4,9 @@ import { ENEMIES, EnemyKind } from '../core/config'
 export class Enemy {
   sprite: Sprite
   x = 0; y = 0
+  /** 联机模式：服务器快照目标位置（插值用） */
+  tx = 0; ty = 0
+  netId = 0
   hp = 1; maxHp = 1
   speed = 0; dmg = 0; xp = 0; r = 10
   kind: EnemyKind = 'bat'
@@ -28,6 +31,8 @@ export class Enemy {
     this.orbCd = 0
     this.alive = true
     this.isBoss = kind === 'boss'
+    this.tx = x; this.ty = y
+    this.netId = 0
     this.sprite.position.set(x, y)
     this.sprite.visible = true
   }
@@ -65,6 +70,8 @@ export class Arrow {
 export class Chest {
   sprite: Sprite
   x = 0; y = 0
+  netId = 0
+  claimed = false
   private t = 0
 
   constructor(tex: Texture, x: number, y: number) {
@@ -85,6 +92,8 @@ export class Gem {
   x = 0; y = 0
   value = 1
   attracted = false
+  netId = 0
+  claimed = false
 
   constructor(tex: Texture) {
     this.sprite = new Sprite(tex)
@@ -95,6 +104,8 @@ export class Gem {
     this.x = x; this.y = y
     this.value = value
     this.attracted = false
+    this.netId = 0
+    this.claimed = false
     this.sprite.position.set(x, y)
     this.sprite.visible = true
   }
