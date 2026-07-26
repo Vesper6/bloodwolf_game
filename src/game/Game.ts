@@ -141,8 +141,13 @@ export class Game {
     else window.addEventListener('beforeunload', () => saveRun(this))
 
     this.app.ticker.add(() => {
-      const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05)
-      this.frame(dt)
+      // 帧异常保护：单帧报错不中断游戏循环
+      try {
+        const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05)
+        this.frame(dt)
+      } catch (e) {
+        console.error('[frame]', e)
+      }
     })
   }
 
@@ -296,6 +301,7 @@ export class Game {
 
   private bindNet(net: Net): void {
     this.announce(`已连接房间 ${net.roomId} · 分享房号邀请队友`, false, true)
+    net.onStatus = msg => this.announce(msg, true)
     net.bind({
       onInit: d => {
         this.time = d.time
