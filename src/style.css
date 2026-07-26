@@ -1,0 +1,113 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: #0a0508;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #e8dcd2;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+
+#game-root, #game-root canvas { position: absolute; inset: 0; }
+
+#moon-glow {
+  position: absolute; top: -18vmin; right: -10vmin; width: 46vmin; height: 46vmin;
+  border-radius: 50%; pointer-events: none; z-index: 1;
+  background: radial-gradient(circle, rgba(220,40,50,.35) 0%, rgba(160,20,40,.15) 45%, transparent 70%);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- HUD ---------- */
+#hud { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+#hud-top {
+  position: absolute; top: 10px; left: 0; right: 0;
+  display: flex; justify-content: center; gap: 32px;
+  font-size: 20px; text-shadow: 0 0 8px #000;
+}
+#timer { font-size: 26px; font-weight: 700; color: #ff5b5b; }
+#kills { align-self: center; color: #ccb; }
+
+#hud-bottom { position: absolute; left: 12px; right: 12px; bottom: 10px; max-width: 560px; margin: 0 auto; }
+#weapon-list { font-size: 13px; color: #b9a; margin-bottom: 6px; text-shadow: 0 1px 3px #000; }
+
+.bar { position: relative; height: 16px; border-radius: 8px; background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.15); overflow: hidden; margin-top: 5px; }
+.bar .fill { height: 100%; width: 100%; transition: width .12s; border-radius: 8px; }
+.bar.hp .fill { background: linear-gradient(90deg, #a3122a, #ff4d4d); }
+.bar.xp .fill { background: linear-gradient(90deg, #3f89c9, #6fd0ff); }
+.bar.energy .fill { background: linear-gradient(90deg, #7a1fa8, #d05bff); }
+.bar span {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000;
+}
+.bar.energy.ready { box-shadow: 0 0 12px #d05bff; }
+
+#boss-bar-wrap { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: min(70vw, 520px); text-align: center; }
+#boss-name { font-size: 14px; color: #ffb0b0; text-shadow: 0 0 6px #000; margin-bottom: 3px; }
+.bar.boss { height: 12px; }
+.bar.boss .fill { background: linear-gradient(90deg, #6e0b0b, #e02222); }
+
+/* ---------- 通用遮罩 ---------- */
+.overlay {
+  position: absolute; inset: 0; z-index: 10;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(5, 2, 4, .82); text-align: center; padding: 20px;
+}
+
+.title { font-size: 76px; letter-spacing: 18px; color: #ff3b3b; text-shadow: 0 0 30px rgba(255,40,40,.7); }
+.subtitle { margin: 8px 0 26px; color: #9a8; letter-spacing: 4px; }
+
+.char-card {
+  border: 1px solid rgba(255,80,80,.4); border-radius: 12px; padding: 16px 26px;
+  background: rgba(40,8,14,.6); max-width: 430px;
+}
+.char-name { font-size: 22px; color: #ff8a5b; margin-bottom: 8px; }
+.char-desc { font-size: 14px; line-height: 1.7; color: #cbb; }
+.controls { margin-top: 20px; color: #887; font-size: 13px; }
+.goal { margin-top: 6px; color: #d66; font-size: 14px; }
+
+button {
+  margin-top: 24px; padding: 13px 52px; font-size: 20px; letter-spacing: 6px;
+  color: #fff; background: linear-gradient(180deg, #b3122a, #7a0c1e);
+  border: 1px solid #ff6a6a; border-radius: 10px; cursor: pointer;
+}
+button:hover { filter: brightness(1.25); }
+
+/* ---------- 三选一卡牌 ---------- */
+#levelup h2 { color: #ffce6b; font-size: 26px; letter-spacing: 6px; margin-bottom: 24px; text-shadow: 0 0 14px rgba(255,180,60,.5); }
+#cards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+.card {
+  width: 190px; min-height: 210px; padding: 16px 14px; border-radius: 12px; cursor: pointer;
+  background: rgba(18,10,16,.95); display: flex; flex-direction: column; gap: 10px;
+  transition: transform .12s; text-align: left;
+}
+.card:hover { transform: translateY(-6px) scale(1.04); }
+.card .c-type { font-size: 11px; letter-spacing: 2px; opacity: .75; }
+.card .c-name { font-size: 19px; font-weight: 700; }
+.card .c-desc { font-size: 13px; line-height: 1.6; color: #cbc; flex: 1; }
+.card .c-extra { font-size: 12px; color: #ffce6b; }
+.card.r-white  { border: 2px solid #9aa;  box-shadow: 0 0 10px rgba(170,180,180,.25); }
+.card.r-blue   { border: 2px solid #3f9ae0; box-shadow: 0 0 14px rgba(60,150,230,.4); }
+.card.r-purple { border: 2px solid #a44fe0; box-shadow: 0 0 16px rgba(170,80,230,.5); }
+.card.r-gold   { border: 2px solid #ffb02e; box-shadow: 0 0 20px rgba(255,176,46,.65); }
+.card.r-white  .c-name { color: #dde; }
+.card.r-blue   .c-name { color: #6fbaff; }
+.card.r-purple .c-name { color: #c98aff; }
+.card.r-gold   .c-name { color: #ffce6b; }
+
+/* ---------- 结算 ---------- */
+#end-title { font-size: 52px; color: #ff4444; letter-spacing: 10px; text-shadow: 0 0 24px rgba(255,40,40,.6); }
+#end-title.victory { color: #ffce6b; text-shadow: 0 0 24px rgba(255,190,60,.7); }
+#end-stats { margin-top: 22px; font-size: 17px; line-height: 2.1; color: #ccb; }
+#end-stats b { color: #ff9c5b; }
+
+/* ---------- 全屏闪光（合成爆发） ---------- */
+#flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 8; }
+#flash.on { animation: flashAnim .45s ease-out; }
+@keyframes flashAnim { 0% { opacity: .85; } 100% { opacity: 0; } }
+
+@media (max-width: 640px) {
+  .title { font-size: 52px; letter-spacing: 10px; }
+  .card { width: 150px; min-height: 190px; }
+}

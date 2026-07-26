@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>血狼 Blood Wolf</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐺</text></svg>" />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="game-root"></div>
+  <div id="moon-glow"></div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-top">
+      <div id="timer">00:00</div>
+      <div id="kills">击杀 0</div>
+    </div>
+    <div id="boss-bar-wrap" class="hidden">
+      <div id="boss-name">???</div>
+      <div class="bar boss"><div id="boss-bar" class="fill"></div></div>
+    </div>
+    <div id="hud-bottom">
+      <div id="weapon-list"></div>
+      <div class="bar hp"><div id="hp-bar" class="fill"></div><span id="hp-text"></span></div>
+      <div class="bar xp"><div id="xp-bar" class="fill"></div><span id="lv-text"></span></div>
+      <div class="bar energy"><div id="energy-bar" class="fill"></div><span id="energy-text">血怒 [空格]</span></div>
+    </div>
+  </div>
+
+  <!-- 升级三选一 -->
+  <div id="levelup" class="overlay hidden">
+    <h2>血月赐予 · 三选一</h2>
+    <div id="cards"></div>
+  </div>
+
+  <!-- 开始界面 -->
+  <div id="start-screen" class="overlay">
+    <h1 class="title">血 狼</h1>
+    <p class="subtitle">BLOOD WOLF · 血月下的求生</p>
+    <div class="char-card">
+      <div class="char-name">血狼 · 雷加</div>
+      <div class="char-desc">近战爆发 · 初始武器【裂空爪】<br/>被动：血量越低，伤害越高（最高 +150%）<br/>主动【血怒】：击杀积攒能量，10 秒狼化狂暴（攻速+100%，吸血20%）</div>
+    </div>
+    <p class="controls">WASD / 方向键移动 · 空格释放血怒 · 手机端触屏拖动</p>
+    <p class="goal">在无尽魔潮中生存 15 分钟</p>
+    <button id="start-btn">进入血月</button>
+  </div>
+
+  <!-- 结算界面 -->
+  <div id="end-screen" class="overlay hidden">
+    <h1 id="end-title">你倒下了</h1>
+    <div id="end-stats"></div>
+    <button id="restart-btn">再战血月</button>
+  </div>
+
+  <div id="flash"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
