@@ -49,6 +49,8 @@ export class Game {
   state: GameState = 'running'
   time = 0
   kills = 0
+  combo = 0
+  private comboTimer = 0
   totalDamage = 0
   maxHit = 0
 
@@ -512,6 +514,7 @@ export class Game {
     this.updateBuildings(dt)
     this.updateChests(dt)
     this.updateBullets(dt)
+    if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.combo = 0 }
     this.fx.update(dt)
     this.updateCamera()
     this.updateHUD()
@@ -547,12 +550,18 @@ export class Game {
       }
     }
 
-    // 精英：2 分钟后每 45 秒一只
+    // 精英：2 分钟后每 45 秒一只，随机词缀（GDD 10.2）
     if (this.time >= ENEMIES.elite.unlockAt) {
       this.eliteTimer -= dt
       if (this.eliteTimer <= 0) {
         this.eliteTimer = 45
-        this.spawnEnemy('elite')
+        const e = this.spawnEnemy('elite')
+        if (e) {
+          const affixes = ['split', 'boom', 'magnet'] as const
+          e.affix = affixes[Math.floor(Math.random() * affixes.length)]
+          e.sprite.tint = e.affix === 'split' ? 0x8affff : e.affix === 'boom' ? 0xff8a3a : 0xff6ad0
+          this.announce(`精英来袭：${e.affix === 'split' ? '分裂' : e.affix === 'boom' ? '自爆' : '磁力'}词缀`, true)
+        }
       }
     }
 
@@ -844,6 +853,25 @@ export class Game {
   private killEnemy(e: Enemy): void {
     e.alive = false
     this.kills++
+    this.onCombo()
+    // 精英词缀结算
+    if (e.affix === 'split') {
+      for (let i = 0; i < 4; i++) {
+        const s = this.spawnEnemy('bat')
+        if (s) { s.x = e.x + rand(-40, 40); s.y = e.y + rand(-40, 40) }
+      }
+      this.announce('精英分裂！')
+    } else if (e.affix === 'boom') {
+      this.fx.explosion(e.x, e.y, 130)
+      this.shake = Math.max(this.shake, 8)
+      if (dist2(e.x, e.y, this.player.x, this.player.y) < 130 ** 2 && this.player.invulnTimer <= 0 && !this.downed) {
+        this.player.hp -= 25
+        if (this.player.hp <= 0) { if (this.net) this.enterDowned(); else this.end(false) }
+      }
+    } else if (e.affix === 'magnet') {
+      for (const g of this.gems) g.attracted = true
+      this.announce('磁力脉冲！全场经验飞向你', false, true)
+    }
     this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + CFG.rage.energyPerKill)
     this.dropGem(e.x, e.y, Math.round(e.xp * (1 + (this.time / 60) * CFG.gemValueGrowthPerMin)))
 
@@ -1034,6 +1062,16 @@ export class Game {
     }
   }
 
+  /** 连杀狂热：3秒内连续击杀，每30连杀奖励15点能量 */
+  private onCombo(): void {
+    this.combo++
+    this.comboTimer = 3
+    if (this.combo % 30 === 0) {
+      this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + 15)
+      this.announce(`🔥 ${this.combo} 连杀！能量+15`, false, true)
+    }
+  }
+
   // ------------------------------------------------------------ 公告走马灯
 
   private announce(text: string, warn = false, epic = false): void {
@@ -1106,7 +1144,7 @@ export class Game {
   private updateHUD(): void {
     const p = this.player
     this.el.timer.textContent = fmtTime(this.time)
-    this.el.kills.textContent = `击杀 ${p ? this.kills : 0}`
+    this.el.kills.textContent = `击杀 ${this.kills}` + (this.combo >= 10 ? ` · ${this.combo}连杀` : '')
     this.el.hpBar.style.width = `${clamp((p.hp / p.maxHp) * 100, 0, 100)}%`
     this.el.hpText.textContent = `${Math.ceil(Math.max(0, p.hp))} / ${p.maxHp}`
     this.el.xpBar.style.width = `${clamp((p.xp / p.xpNeed()) * 100, 0, 100)}%`

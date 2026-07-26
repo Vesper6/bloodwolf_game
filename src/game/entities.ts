@@ -16,6 +16,8 @@ export class Enemy {
   /** 毒瘟：层数与tick计时（丝卡） */
   poison = 0
   poisonTick = 0
+  /** 精英词缀：split=分裂 boom=自爆 magnet=磁力 */
+  affix: 'split' | 'boom' | 'magnet' | null = null
 
   constructor(tex: Texture) {
     this.sprite = new AnimatedSprite([tex])
@@ -45,6 +47,7 @@ export class Enemy {
     this.isBoss = kind === 'boss'
     this.poison = 0
     this.poisonTick = 0
+    this.affix = null
     this.tx = x; this.ty = y
     this.netId = 0
     this.sprite.position.set(x, y)
