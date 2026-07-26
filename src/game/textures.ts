@@ -127,16 +127,16 @@ export function makeTextures(app: Application): Textures {
   }
 }
 
-/** 背景网格纹理（血月荒原：暗地面 + 裂纹点） */
-export function makeGroundTexture(app: Application): Texture {
+/** 背景网格纹理（按地图主题配色） */
+export function makeGroundTexture(app: Application, theme: { base: number; line: number; dot: number }): Texture {
   const g = new Graphics()
-  g.beginFill(0x120a10)
+  g.beginFill(theme.base)
   g.drawRect(0, 0, 128, 128)
   g.endFill()
-  g.lineStyle(1, 0x241420, 1)
+  g.lineStyle(1, theme.line, 1)
   g.moveTo(0, 0); g.lineTo(128, 0)
   g.moveTo(0, 0); g.lineTo(0, 128)
-  g.beginFill(0x2a1622)
+  g.beginFill(theme.dot)
   for (let i = 0; i < 5; i++) {
     g.drawCircle(Math.random() * 128, Math.random() * 128, 1.5 + Math.random() * 2)
   }

@@ -1,8 +1,8 @@
 import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pixi.js'
 import { Net } from '../net/net'
 import {
-  BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, PASSIVES, RESONANCE_DESC,
-  TAG_NAME, TagId, WeaponId, moonMul,
+  BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, MAPS, MapId, PASSIVES,
+  RESONANCE_DESC, TAG_NAME, TagId, WeaponId, moonMul,
 } from '../core/config'
 import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
@@ -89,13 +89,15 @@ export class Game {
 
   charId: CharId = 'rega'
   moonLv = 1
+  mapId: MapId = 'wasteland'
   private meta: MetaData = loadMeta()
   private victoryAnnounced = false
 
-  constructor(net: Net | null = null, charId: CharId = 'rega', moonLv = 1) {
+  constructor(net: Net | null = null, charId: CharId = 'rega', moonLv = 1, mapId: MapId = 'wasteland') {
     this.net = net
     this.charId = charId
     this.moonLv = moonLv
+    this.mapId = mapId
     this.app = new Application({
       resizeTo: window,
       background: 0x0a0508,
@@ -104,7 +106,7 @@ export class Game {
     document.getElementById('game-root')!.appendChild(this.app.view as HTMLCanvasElement)
 
     this.tex = makeTextures(this.app)
-    this.bg = new TilingSprite(makeGroundTexture(this.app), 64, 64)
+    this.bg = new TilingSprite(makeGroundTexture(this.app, MAPS[this.mapId]), 64, 64)
     this.app.stage.addChild(this.bg)
     this.app.stage.addChild(this.world)
 
@@ -143,6 +145,8 @@ export class Game {
       case 'vera': p.critChance += 10; p.hastePct += 15; break
       case 'vivi': p.buildDmgPct += 40; break
       case 'kane': p.areaMul = 1.3; break
+      case 'gordon': p.maxHp += 60; p.hp = p.maxHp; break
+      case 'rin': p.critChance += 15; p.critDmg += 50; break
     }
 
     this.addWeapon(def.weapon)
@@ -188,6 +192,22 @@ export class Game {
             this.dealDamage(e, dmg)
           }
         }
+        this.hitstop = 0.08
+        break
+      }
+      case 'gordon':
+        // 磁石护罩：5秒无敌+接触反噬
+        p.invulnTimer = 5
+        break
+      case 'rin': {
+        // 千影闪：近身五连必暴击
+        const claw = p.weapons.find(w => w.id === 'claw')
+        const dmg = claw?.dmg ?? 16
+        for (const e of [...this.enemies]) {
+          if (!e.alive || dist2(e.x, e.y, p.x, p.y) > 300 ** 2) continue
+          for (let i = 0; i < 5; i++) this.dealDamage(e, dmg, { forceCrit: true })
+        }
+        this.fx.slash(p.x, p.y, 0, 300, Math.PI * 2)
         this.hitstop = 0.08
         break
       }
@@ -570,14 +590,21 @@ export class Game {
       e.sprite.position.set(e.x, e.y)
 
       // 接触伤害（持续型，堆叠有上限；倒地/选卡时免疫）
-      if (d < e.r + p.radius) contactDmg += e.dmg
+      if (d < e.r + p.radius) {
+        contactDmg += e.dmg
+        // 戈登护罩反噬
+        if (p.invulnTimer > 0 && this.charId === 'gordon' && e.orbCd <= 0) {
+          e.orbCd = 0.4
+          this.dealDamage(e, 30)
+        }
+      }
 
       // 磨损筑造物
       for (const b of this.buildings) {
         if (dist2(e.x, e.y, b.x, b.y) < (e.r + 26) ** 2) b.hp -= e.dmg * 0.5 * dt
       }
     }
-    const invuln = this.downed || this.state === 'levelup'
+    const invuln = this.downed || this.state === 'levelup' || p.invulnTimer > 0
     if (contactDmg > 0 && !invuln) {
       p.hp -= Math.min(contactDmg, CFG.player.maxContactDps) * dt
       if (p.hp <= 0) {
@@ -620,7 +647,7 @@ export class Game {
       }
     }
 
-    const invuln = this.downed || this.state === 'levelup'
+    const invuln = this.downed || this.state === 'levelup' || p.invulnTimer > 0
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i]
       b.life -= dt

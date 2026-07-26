@@ -8,6 +8,8 @@ export class Player {
   areaMul = 1
   /** 局外天赋：幸运（提升三选一稀有度） */
   luck = 0
+  /** 无敌时间（戈登护罩等） */
+  invulnTimer = 0
   sprite: Sprite
   x = 0
   y = 0
@@ -144,7 +146,8 @@ export class Player {
       this.rageTimer -= dt
       if (this.rageTimer <= 0) this.raging = false
     }
-    this.sprite.tint = this.raging ? 0xff6a6a : 0xffffff
+    if (this.invulnTimer > 0) this.invulnTimer -= dt
+    this.sprite.tint = this.raging ? 0xff6a6a : this.invulnTimer > 0 ? 0x8ae0ff : 0xffffff
     this.sprite.position.set(this.x, this.y)
   }
 }

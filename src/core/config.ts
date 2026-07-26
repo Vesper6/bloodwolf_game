@@ -129,7 +129,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
 export const MAX_BUILDINGS = 4
 
 /** ---------- 角色（GDD 4章，M3 实装 4 名） ---------- */
-export type CharId = 'rega' | 'vera' | 'vivi' | 'kane'
+export type CharId = 'rega' | 'vera' | 'vivi' | 'kane' | 'gordon' | 'rin'
 
 export interface CharDef {
   name: string
@@ -161,6 +161,27 @@ export const CHARS: Record<CharId, CharDef> = {
     desc: '被动：技能与武器范围+30%',
     skill: { name: '血月陨落', desc: '全屏陨石，重创所有敌人' },
   },
+  gordon: {
+    name: '铁壁·戈登', role: '坦克/反伤', weapon: 'claw',
+    desc: '被动：最大生命+60',
+    skill: { name: '磁石护罩', desc: '5秒无敌，接触的敌人被电弧反噬' },
+  },
+  rin: {
+    name: '影刃·凛', role: '暴击刺客', weapon: 'claw',
+    desc: '被动：暴击率+15%，暴击伤害+50%',
+    skill: { name: '千影闪', desc: '瞬斩周围所有敌人，五连必暴击' },
+  },
+}
+
+/** ---------- 地图（GDD 10.1，M3：3 张主题图） ---------- */
+export type MapId = 'wasteland' | 'cathedral' | 'neon'
+
+export interface MapDef { name: string; base: number; line: number; dot: number }
+
+export const MAPS: Record<MapId, MapDef> = {
+  wasteland: { name: '血月荒原', base: 0x120a10, line: 0x241420, dot: 0x2a1622 },
+  cathedral: { name: '沉沦教堂', base: 0x0e1016, line: 0x202a38, dot: 0x32405a },
+  neon:      { name: '霓虹废都', base: 0x0a0a16, line: 0x231a4e, dot: 0x3c1a6e },
 }
 
 /** ---------- 血月等级（GDD 8.3）：难度层，通关解锁下一层 ---------- */

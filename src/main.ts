@@ -1,4 +1,4 @@
-import { CHARS, CharId, MOON_MAX, TALENTS, WEAPON_INFO } from './core/config'
+import { CHARS, CharId, MAPS, MapId, MOON_MAX, TALENTS, WEAPON_INFO } from './core/config'
 import { buyTalent, loadMeta, talentLv } from './core/meta'
 import { Game } from './game/Game'
 import { Net } from './net/net'
@@ -10,6 +10,15 @@ const meta = loadMeta()
 
 let selectedChar: CharId = 'rega'
 let moonLv = 1
+let mapId: MapId = 'wasteland'
+
+// 地图循环切换
+const mapBtn = document.getElementById('map-btn')!
+mapBtn.addEventListener('click', () => {
+  const ids = Object.keys(MAPS) as MapId[]
+  mapId = ids[(ids.indexOf(mapId) + 1) % ids.length]
+  mapBtn.textContent = `地图：${MAPS[mapId].name}`
+})
 
 // ---------- 角色选择 ----------
 const charGrid = document.getElementById('char-grid')!
@@ -81,7 +90,7 @@ if (urlRoom) {
 
 function begin(net: Net | null): void {
   startScreen.classList.add('hidden')
-  new Game(net, selectedChar, net ? (net.moonLv || 1) : moonLv)
+  new Game(net, selectedChar, net ? (net.moonLv || 1) : moonLv, mapId)
   if (net) history.replaceState(null, '', `?room=${net.roomId}`)
 }
 
