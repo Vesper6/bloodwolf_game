@@ -129,7 +129,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
 export const MAX_BUILDINGS = 4
 
 /** ---------- 角色（GDD 4章，M3 实装 4 名） ---------- */
-export type CharId = 'rega' | 'vera' | 'vivi' | 'kane' | 'gordon' | 'rin'
+export type CharId = 'rega' | 'vera' | 'vivi' | 'kane' | 'gordon' | 'rin' | 'sika' | 'laojin'
 
 export interface CharDef {
   name: string
@@ -170,6 +170,16 @@ export const CHARS: Record<CharId, CharDef> = {
     name: '影刃·凛', role: '暴击刺客', weapon: 'claw',
     desc: '被动：暴击率+15%，暴击伤害+50%',
     skill: { name: '千影闪', desc: '瞬斩周围所有敌人，五连必暴击' },
+  },
+  sika: {
+    name: '毒牙·丝卡', role: '毒瘟DOT', weapon: 'orb',
+    desc: '被动：所有攻击叠加毒液（持续掉血，最多8层）',
+    skill: { name: '瘟疫领域', desc: '大范围敌人立刻+6层剧毒' },
+  },
+  laojin: {
+    name: '赌狼·老金', role: '经济/运气', weapon: 'bow',
+    desc: '被动：幸运大幅提升，拾取范围+50%',
+    skill: { name: '掷命骰', desc: '60%获得传说词条，40%失去15%生命' },
   },
 }
 

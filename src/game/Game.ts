@@ -147,6 +147,8 @@ export class Game {
       case 'kane': p.areaMul = 1.3; break
       case 'gordon': p.maxHp += 60; p.hp = p.maxHp; break
       case 'rin': p.critChance += 15; p.critDmg += 50; break
+      case 'sika': break // 被动在 dealDamage 中叠毒
+      case 'laojin': p.luck += 6; p.pickupPct += 50; break
     }
 
     this.addWeapon(def.weapon)
@@ -199,6 +201,26 @@ export class Game {
         // 磁石护罩：5秒无敌+接触反噬
         p.invulnTimer = 5
         break
+      case 'sika':
+        // 瘟疫领域：大范围+6层剧毒
+        for (const e of this.enemies) {
+          if (e.alive && dist2(e.x, e.y, p.x, p.y) < 400 ** 2) e.poison = Math.min(8, e.poison + 6)
+        }
+        break
+      case 'laojin': {
+        // 掷命骰：赌一把
+        if (Math.random() < 0.6) {
+          const keys = Object.keys(PASSIVES)
+          const key = keys[Math.floor(Math.random() * keys.length)]
+          const def = PASSIVES[key]
+          p.applyPassive(key, def.values[3])
+          this.announce(`🎲 掷命骰：${def.name}（传说）！${def.desc(def.values[3])}`, false, true)
+        } else {
+          p.hp = Math.max(1, p.hp * 0.85)
+          this.announce('🎲 掷命骰失败：失去15%生命', true)
+        }
+        break
+      }
       case 'rin': {
         // 千影闪：近身五连必暴击
         const claw = p.weapons.find(w => w.id === 'claw')
@@ -572,6 +594,17 @@ export class Game {
       }
       if (e.orbCd > 0) e.orbCd -= dt
 
+      // 毒瘟结算（每0.8秒一跳，每层4点基础伤害）
+      if (e.poison > 0) {
+        e.poisonTick += dt
+        if (e.poisonTick >= 0.8) {
+          e.poisonTick = 0
+          e.sprite.tint = 0x7aff5a
+          this.dealDamage(e, e.poison * 4, { noPoison: true })
+          if (!e.alive) continue
+        }
+      }
+
       let d: number
       if (this.net) {
         // 联机：向服务器快照位置插值
@@ -739,10 +772,13 @@ export class Game {
   }
 
   /** 伤害乘区结算（GDD 8.1）+ 流派共鸣效果 */
-  dealDamage(e: Enemy, base: number, opts?: { forceCrit?: boolean; building?: boolean }): void {
+  dealDamage(e: Enemy, base: number, opts?: { forceCrit?: boolean; building?: boolean; noPoison?: boolean }): void {
     if (!e.alive) return
     const p = this.player
     const tags = p.tags
+
+    // 丝卡被动：攻击叠毒
+    if (this.charId === 'sika' && !opts?.noPoison) e.poison = Math.min(8, e.poison + 1)
 
     // 暴击共鸣 III/V/VII
     let critChance = p.critChance + (tags.crit >= 3 ? 8 : 0)

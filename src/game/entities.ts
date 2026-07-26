@@ -13,6 +13,9 @@ export class Enemy {
   orbCd = 0
   alive = true
   isBoss = false
+  /** 毒瘟：层数与tick计时（丝卡） */
+  poison = 0
+  poisonTick = 0
 
   constructor(tex: Texture) {
     this.sprite = new Sprite(tex)
@@ -31,6 +34,8 @@ export class Enemy {
     this.orbCd = 0
     this.alive = true
     this.isBoss = kind === 'boss'
+    this.poison = 0
+    this.poisonTick = 0
     this.tx = x; this.ty = y
     this.netId = 0
     this.sprite.position.set(x, y)
