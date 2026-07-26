@@ -1,5 +1,5 @@
 import {
-  BUILDINGS, BuildingId, MAX_BUILDINGS, PASSIVES, PASSIVE_MAX_LV, PASSIVE_TAG,
+  BUILDINGS, BuildingId, ELEMENTS, MAX_BUILDINGS, PASSIVES, PASSIVE_MAX_LV, PASSIVE_TAG,
   RARITIES, RARITY_NAME, RARITY_WEIGHT, Rarity, TAG_NAME, TagId, WEAPON_INFO, WEAPON_TAG, WeaponId,
 } from '../core/config'
 import type { Game } from './Game'
@@ -49,17 +49,20 @@ export function generateOptions(g: Game): CardOption[] {
   const tagBias = (tag?: TagId) => (tag ? p.tags[tag] * 2 : 0)
 
   // ---- 武器卡 ----
-  const allIds: WeaponId[] = ['claw', 'bow', 'orb']
+  const allIds: WeaponId[] = ['claw', 'bow', 'orb', 'frost', 'quake']
   for (const id of allIds) {
     const owned = p.weapons.find(w => w.id === id)
     const info = WEAPON_INFO[id]
     const tag = WEAPON_TAG[id]
+    const el = ELEMENTS[info.element]
+    const elChip = `〔${el.name}·${info.melee ? '近战' : '远程'}〕`
     if (!owned) {
       entries.push({
         weight: 10 + tagBias(tag),
         card: {
-          type: '新武器' + tagChip(tag), name: info.name, desc: info.desc, rarity: 'blue', tag,
-          extra: '获得后集齐 3 份可合成升级',
+          type: '新武器' + elChip + tagChip(tag), name: info.name,
+          desc: `${info.desc}。${el.name}系：${el.effect}`, rarity: 'blue', tag,
+          extra: '获得后集齐 3 份可合成升级，五行相生全队增伤',
           apply: game => game.addWeapon(id),
         },
       })

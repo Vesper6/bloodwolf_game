@@ -20,6 +20,12 @@ export class Enemy {
   affix: 'split' | 'boom' | 'magnet' | null = null
   /** 受击挤压脉冲（0~1，衰减） */
   hitPulse = 0
+  /** 五行状态：减速/眩晕/灼烧 */
+  slowT = 0
+  stunT = 0
+  burnDps = 0
+  burnT = 0
+  burnTick = 0
   private shadow: Sprite | null = null
 
   constructor(tex: Texture, shadowTex?: Texture) {
@@ -57,6 +63,8 @@ export class Enemy {
     this.poisonTick = 0
     this.affix = null
     this.hitPulse = 0
+    this.slowT = 0; this.stunT = 0
+    this.burnDps = 0; this.burnT = 0; this.burnTick = 0
     if (this.shadow) {
       this.shadow.position.set(0, def.r * 0.9)
       this.shadow.scale.set(def.r / 14)
@@ -74,6 +82,7 @@ export class Arrow {
   x = 0; y = 0; vx = 0; vy = 0
   dmg = 0; pierce = 0; life = 0
   fromBuilding = false
+  element = '' // 五行元素（空=无）
   hit = new Set<Enemy>()
 
   constructor(tex: Texture) {

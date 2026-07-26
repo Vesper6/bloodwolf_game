@@ -74,12 +74,28 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   boss:     { hp: 3600, speed: 58,  dmg: 32, xp: 150, r: 42, color: 0xe02222, unlockAt: 0,   weight: 0 },
 }
 
-export type WeaponId = 'claw' | 'bow' | 'orb'
+export type WeaponId = 'claw' | 'bow' | 'orb' | 'frost' | 'quake'
 
-export const WEAPON_INFO: Record<WeaponId, { name: string; desc: string }> = {
-  claw: { name: '裂空爪', desc: '向面朝方向挥出撕裂爪击，大范围扇形伤害' },
-  bow:  { name: '银月长弓', desc: '自动锁定最近的敌人，射出穿透银箭' },
-  orb:  { name: '血焰法球', desc: '血焰球环绕自身旋转，灼烧接触的敌人' },
+/** 五行元素：金→水→木→火→土→金 相生循环 */
+export type ElementId = 'metal' | 'water' | 'wood' | 'fire' | 'earth'
+
+export const ELEMENTS: Record<ElementId, { name: string; color: number; effect: string }> = {
+  metal: { name: '金', color: 0xffe8a0, effect: '暴击率+8%' },
+  water: { name: '水', color: 0x6fd0ff, effect: '命中减速30%持续2秒' },
+  wood:  { name: '木', color: 0x7aff8a, effect: '伤害5%转化为治疗' },
+  fire:  { name: '火', color: 0xff7a2e, effect: '点燃：2秒灼烧伤害' },
+  earth: { name: '土', color: 0xd0a060, effect: '命中眩晕0.4秒' },
+}
+
+/** 相生序（环）：每存在一条相生链 +10% 全伤害，五行齐聚再+额外 */
+export const ELEMENT_CYCLE: ElementId[] = ['metal', 'water', 'wood', 'fire', 'earth']
+
+export const WEAPON_INFO: Record<WeaponId, { name: string; desc: string; element: ElementId; melee: boolean }> = {
+  claw:  { name: '裂空爪', desc: '向面朝方向挥出撕裂爪击，大范围扇形伤害', element: 'metal', melee: true },
+  bow:   { name: '银月长弓', desc: '自动锁定最近的敌人，射出穿透银箭', element: 'wood', melee: false },
+  orb:   { name: '血焰法球', desc: '血焰球环绕自身旋转，灼烧接触的敌人', element: 'fire', melee: true },
+  frost: { name: '寒冰星轮', desc: '向最近敌人掷出三连穿透冰轮，冻缓敌人', element: 'water', melee: false },
+  quake: { name: '大地重锤', desc: '周期震地，环形冲击波重创并眩晕周围敌人', element: 'earth', melee: true },
 }
 
 /** 被动词条：数值按稀有度 [白, 蓝, 紫, 金]，每种最多叠 5 级 */
@@ -102,9 +118,11 @@ export const PASSIVES: Record<string, PassiveDef> = {
 export interface EvolutionDef { requires: string; evoName: string; desc: string }
 
 export const EVOLUTIONS: Record<WeaponId, EvolutionDef> = {
-  claw: { requires: 'haste', evoName: '千爪风暴', desc: '近身持续旋风，吸附怪物绞杀' },
-  bow:  { requires: 'crit',  evoName: '弑神狙',   desc: '每3秒锁定全屏血量最高者，巨额必暴击' },
-  orb:  { requires: 'atk',   evoName: '血月熔核', desc: '巨型火球环绕，命中引发连锁爆炸' },
+  claw:  { requires: 'haste',  evoName: '千爪风暴', desc: '近身持续旋风，吸附怪物绞杀' },
+  bow:   { requires: 'crit',   evoName: '弑神狙',   desc: '每3秒锁定全屏血量最高者，巨额必暴击' },
+  orb:   { requires: 'atk',    evoName: '血月熔核', desc: '巨型火球环绕，命中引发连锁爆炸' },
+  frost: { requires: 'move',   evoName: '绝对零度', desc: '八方冰暴，重度冻缓全场' },
+  quake: { requires: 'maxhp',  evoName: '山崩地裂', desc: '双重震波，范围与眩晕大幅强化' },
 }
 
 /** ---------- 流派标签与共鸣（GDD 6章，M1 实装 3 系） ---------- */

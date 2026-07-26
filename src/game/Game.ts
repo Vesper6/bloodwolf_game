@@ -2,7 +2,8 @@ import { Application, Container, Graphics, Sprite, Text, TilingSprite } from 'pi
 import { Net } from '../net/net'
 import {
   BuildingId, CFG, CHARS, CharId, ENEMIES, EVOLUTIONS, EnemyKind, MAPS, MapId, PASSIVES,
-  BOSSES, BossKind, RESONANCE_DESC, SHOP, TAG_NAME, TagId, WeaponId, moonMul,
+  BOSSES, BossKind, ELEMENTS, ELEMENT_CYCLE, ElementId, RESONANCE_DESC, SHOP, TAG_NAME, TagId,
+  WEAPON_INFO, WeaponId, moonMul,
 } from '../core/config'
 import { MetaData, grantReward, loadMeta, saveMeta, talentLv } from '../core/meta'
 import { clamp, dist2, fmtNum, fmtTime, rand } from '../core/utils'
@@ -696,6 +697,20 @@ export class Game {
       }
       if (e.orbCd > 0) e.orbCd -= dt
 
+      // 五行状态
+      if (e.slowT > 0) e.slowT -= dt
+      if (e.stunT > 0) e.stunT -= dt
+      if (e.burnT > 0) {
+        e.burnT -= dt
+        e.burnTick += dt
+        if (e.burnTick >= 0.5) {
+          e.burnTick = 0
+          e.sprite.tint = 0xff9a5a
+          this.dealDamage(e, e.burnDps * 0.5, { noPoison: true })
+          if (!e.alive) continue
+        }
+      }
+
       // 毒瘟结算（每0.8秒一跳，每层4点基础伤害）
       if (e.poison > 0) {
         e.poisonTick += dt
@@ -714,8 +729,10 @@ export class Game {
         e.y += (e.ty - e.y) * Math.min(1, dt * 8)
         d = Math.hypot(p.x - e.x, p.y - e.y) || 1
       } else {
-        // 血月狂暴（无尽模式）：全怪提速40%变红
-        const frenzy = this.victoryAnnounced ? 1.4 : 1
+        // 血月狂暴（无尽模式）：全怪提速40%变红；水缓/土晕
+        let frenzy = this.victoryAnnounced ? 1.4 : 1
+        if (e.slowT > 0) { frenzy *= 0.6; e.sprite.tint = 0x8ae8ff }
+        if (e.stunT > 0) frenzy = 0
         const dx = p.x - e.x, dy = p.y - e.y
         d = Math.hypot(dx, dy) || 1
         e.x += (dx / d) * e.speed * frenzy * dt
@@ -760,6 +777,8 @@ export class Game {
     if (this.enemyPool.length < 100) this.enemyPool.push(e)
   }
 
+  shakeBump(v: number): void { this.shake = Math.max(this.shake, v) }
+
   // ------------------------------------------------------------ Boss 弹幕（战魂铭人式）
 
   private updateBullets(dt: number): void {
@@ -784,8 +803,10 @@ export class Game {
         if (this.spiralTimer >= 0.11) {
           this.spiralTimer = 0
           this.spiralAngle += 0.42
-          for (let arm = 0; arm < 3; arm++) {
-            this.spawnBullet(boss.x, boss.y, this.spiralAngle + (arm / 3) * Math.PI * 2, 150, dmg)
+          for (let arm = 0; arm < 4; arm++) {
+            const tint = [0x7aff8a, 0xd0ff5a, 0x5ae8c0, 0xaaff3a][arm]
+            this.spawnBullet(boss.x, boss.y, this.spiralAngle + (arm / 4) * Math.PI * 2, 150, dmg, tint)
+            this.spawnBullet(boss.x, boss.y, -this.spiralAngle * 0.8 + (arm / 4) * Math.PI * 2, 105, dmg, 0x3ac8ff)
           }
         }
         // 召唤蝠群
@@ -804,8 +825,9 @@ export class Game {
         if (this.bossRingTimer >= 2.4 * frenzyMul) {
           this.bossRingTimer = 0
           const offset = Math.random() * Math.PI * 2
-          for (let i = 0; i < 14; i++) {
-            this.spawnBullet(boss.x, boss.y, offset + (i / 14) * Math.PI * 2, 180, dmg)
+          for (let i = 0; i < 16; i++) {
+            this.spawnBullet(boss.x, boss.y, offset + (i / 16) * Math.PI * 2, 180, dmg)
+            this.spawnBullet(boss.x, boss.y, offset + 0.2 + (i / 16) * Math.PI * 2, 120, dmg, 0xc06aff)
           }
         }
         this.bossAimTimer += dt
@@ -817,6 +839,18 @@ export class Game {
           }
         }
       }
+      // 弗恩里狂暴：追加旋转弹幕臂
+      if (kind === 'fenrir' && this.enraged) {
+        this.spiralTimer += dt
+        if (this.spiralTimer >= 0.14) {
+          this.spiralTimer = 0
+          this.spiralAngle += 0.5
+          for (let arm = 0; arm < 2; arm++) {
+            this.spawnBullet(boss.x, boss.y, this.spiralAngle + arm * Math.PI, 190, dmg, 0xff9a2e)
+          }
+        }
+      }
+
       // 加尔诺：蓄力冲锋（单机）
       if (kind === 'garno' && !this.net) {
         this.chargeTimer += dt
@@ -864,18 +898,20 @@ export class Game {
     }
   }
 
-  private spawnBullet(x: number, y: number, angle: number, speed: number, dmg: number): void {
+  private spawnBullet(x: number, y: number, angle: number, speed: number, dmg: number, tint = 0xff3050): void {
     const b = this.bulletPool.pop() ?? new Bullet(this.tex.orb)
     b.init(x, y, angle, speed, dmg)
+    b.sprite.tint = tint
     this.world.addChild(b.sprite)
     this.bullets.push(b)
   }
 
   // ------------------------------------------------------------ 弹体
 
-  spawnArrow(x: number, y: number, angle: number, dmg: number, pierce: number, opts?: { tint?: number; building?: boolean }): void {
+  spawnArrow(x: number, y: number, angle: number, dmg: number, pierce: number, opts?: { tint?: number; building?: boolean; element?: string }): void {
     const a = this.arrowPool.pop() ?? new Arrow(this.tex.arrow)
     a.init(x, y, angle, 720, dmg, pierce, opts?.tint ?? 0xffffff, opts?.building ?? false)
+    a.element = opts?.element ?? ''
     this.world.addChild(a.sprite)
     this.arrows.push(a)
   }
@@ -893,7 +929,7 @@ export class Game {
           if (!e.alive || a.hit.has(e)) continue
           if (dist2(a.x, a.y, e.x, e.y) < (12 + e.r) ** 2) {
             a.hit.add(e)
-            this.dealDamage(e, a.dmg, { building: a.fromBuilding })
+            this.dealDamage(e, a.dmg, { building: a.fromBuilding, element: (a.element || undefined) as ElementId | undefined })
             a.pierce--
             if (a.pierce < 0) break
           }
@@ -930,7 +966,7 @@ export class Game {
   }
 
   /** 伤害乘区结算（GDD 8.1）+ 流派共鸣效果 */
-  dealDamage(e: Enemy, base: number, opts?: { forceCrit?: boolean; building?: boolean; noPoison?: boolean }): void {
+  dealDamage(e: Enemy, base: number, opts?: { forceCrit?: boolean; building?: boolean; noPoison?: boolean; element?: ElementId }): void {
     if (!e.alive) return
     const p = this.player
     const tags = p.tags
@@ -938,8 +974,8 @@ export class Game {
     // 丝卡被动：攻击叠毒
     if (this.charId === 'sika' && !opts?.noPoison) e.poison = Math.min(8, e.poison + 1)
 
-    // 暴击共鸣 III/V/VII
-    let critChance = p.critChance + (tags.crit >= 3 ? 8 : 0)
+    // 暴击共鸣 III/V/VII（金元素：暴击率+8）
+    let critChance = p.critChance + (tags.crit >= 3 ? 8 : 0) + (opts?.element === 'metal' ? 8 : 0)
     let critDmg = p.critDmg + (tags.crit >= 5 ? 60 : 0)
     if (tags.crit >= 7 && critChance > 100) critDmg += (critChance - 100) * 2
     const crit = opts?.forceCrit || Math.random() * 100 < critChance
@@ -958,6 +994,8 @@ export class Game {
     }
     // 嗜血共鸣 VII
     if (tags.blood >= 7 && p.hp < p.maxHp * 0.5) mul *= 1.4
+    // 五行相生加成（每条相生链 +10%）
+    mul *= 1 + 0.1 * this.elementLinks
 
     const dmg = base * mul * (crit ? critDmg / 100 : 1)
 
@@ -982,6 +1020,16 @@ export class Game {
       const heal = Math.min(dmg * steal, p.maxHp * 0.05)
       p.heal(heal)
       if (Math.random() < 0.06) this.fx.healText(p.x, p.y, heal)
+    }
+
+    // 五行属性效果
+    switch (opts?.element) {
+      case 'water': e.slowT = Math.max(e.slowT, 2); break
+      case 'earth': e.stunT = Math.max(e.stunT, 0.4); break
+      case 'fire': e.burnDps = Math.max(e.burnDps, dmg * 0.15); e.burnT = 2; break
+      case 'wood':
+        if (p.hp < p.maxHp) p.heal(Math.min(dmg * 0.05, p.maxHp * 0.03))
+        break
     }
 
     if (e.hp <= 0) this.killEnemy(e)
@@ -1284,10 +1332,30 @@ export class Game {
 
   // ------------------------------------------------------------ 武器与合成
 
+  /** 当前相生链数：金→水→木→火→土→金 环上相邻元素同时持有即成链 */
+  get elementLinks(): number {
+    const owned = new Set(this.player.weapons.map(w => WEAPON_INFO[w.id].element))
+    let links = 0
+    for (let i = 0; i < ELEMENT_CYCLE.length; i++) {
+      const a = ELEMENT_CYCLE[i], b = ELEMENT_CYCLE[(i + 1) % ELEMENT_CYCLE.length]
+      if (owned.has(a) && owned.has(b)) links++
+    }
+    return links
+  }
+
   addWeapon(id: WeaponId): void {
     const owned = this.player.weapons.find(w => w.id === id)
     if (!owned) {
+      const before = this.elementLinks
       this.player.weapons.push(createWeapon(id))
+      const after = this.elementLinks
+      if (after > before) {
+        const el = ELEMENTS[WEAPON_INFO[id].element]
+        this.announce(after >= 5
+          ? '☯ 五行归一！相生循环闭合，全伤害+50%'
+          : `☯ 五行相生：【${el.name}】入阵，全伤害+${after * 10}%`, false, true)
+        if (after >= 5) { this.flash(); this.shake = 20 }
+      }
       return
     }
     owned.copies++

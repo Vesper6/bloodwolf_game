@@ -86,6 +86,18 @@ export class Fx {
     this.slashes.push({ g, life: 0.22 })
   }
 
+  /** 大地重锤震波环 */
+  quakeRing(x: number, y: number, r: number): void {
+    const g = new Graphics()
+    g.lineStyle(8, 0xd0a060, 0.7)
+    g.drawCircle(0, 0, r * 0.5)
+    g.lineStyle(3, 0x8a6a40, 0.5)
+    g.drawCircle(0, 0, r * 0.3)
+    g.position.set(x, y)
+    this.layer.addChild(g)
+    this.slashes.push({ g, life: 0.3 })
+  }
+
   /** 合成爆发环 */
   burstRing(x: number, y: number): void {
     const g = new Graphics()

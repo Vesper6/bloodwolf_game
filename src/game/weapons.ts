@@ -48,7 +48,7 @@ export class ClawWeapon extends Weapon {
       if (!e.alive) continue
       if (dist2(p.x, p.y, e.x, e.y) > (range + e.r) ** 2) continue
       const a = Math.atan2(e.y - p.y, e.x - p.x)
-      if (Math.abs(angleDiff(a, ang)) <= arc / 2) g.dealDamage(e, this.dmg)
+      if (Math.abs(angleDiff(a, ang)) <= arc / 2) g.dealDamage(e, this.dmg, { element: 'metal' })
     }
     g.fx.slash(p.x, p.y, ang, range, arc)
   }
@@ -70,7 +70,7 @@ export class BowWeapon extends Weapon {
     const targets = g.nearestEnemies(this.level)
     for (const t of targets) {
       const ang = Math.atan2(t.y - p.y, t.x - p.x)
-      g.spawnArrow(p.x, p.y, ang, this.dmg, 1 + this.level)
+      g.spawnArrow(p.x, p.y, ang, this.dmg, 1 + this.level, { element: 'wood' })
     }
   }
 }
@@ -109,7 +109,7 @@ export class OrbWeapon extends Weapon {
       if (!e.alive || e.orbCd > 0) continue
       for (const o of positions) {
         if (dist2(o.x, o.y, e.x, e.y) < (16 + e.r) ** 2) {
-          g.dealDamage(e, this.dmg)
+          g.dealDamage(e, this.dmg, { element: 'fire' })
           e.orbCd = 0.45
           break
         }
@@ -120,6 +120,50 @@ export class OrbWeapon extends Weapon {
   override dispose(g: Game): void {
     for (const s of this.sprites) { g.world.removeChild(s); s.destroy() }
     this.sprites = []
+  }
+}
+
+/** 寒冰星轮（水）：三连穿透冰轮，冻缓敌人 */
+export class FrostWeapon extends Weapon {
+  readonly id = 'frost' as const
+  readonly baseDmg = 18
+
+  update(g: Game, dt: number): void {
+    const interval = 1.3 / g.player.hasteMul
+    this.timer += dt
+    if (this.timer < interval || g.enemies.length === 0) return
+    this.timer = 0
+    const p = g.player
+    const t = g.nearestEnemies(1)[0]
+    if (!t) return
+    const ang = Math.atan2(t.y - p.y, t.x - p.x)
+    const n = 2 + this.level // 3/4/5 连
+    for (let i = 0; i < n; i++) {
+      g.spawnArrow(p.x, p.y, ang + (i - (n - 1) / 2) * 0.22, this.dmg, 2 + this.level,
+        { tint: 0x8ae8ff, element: 'water' })
+    }
+  }
+}
+
+/** 大地重锤（土）：周期震地环形冲击波，眩晕 */
+export class QuakeWeapon extends Weapon {
+  readonly id = 'quake' as const
+  readonly baseDmg = 30
+
+  update(g: Game, dt: number): void {
+    const interval = 1.8 / g.player.hasteMul
+    this.timer += dt
+    if (this.timer < interval) return
+    this.timer = 0
+    const p = g.player
+    const radius = (140 + 30 * (this.level - 1)) * p.areaMul
+    g.fx.quakeRing(p.x, p.y, radius)
+    g.shakeBump(6)
+    for (const e of g.enemies) {
+      if (e.alive && dist2(p.x, p.y, e.x, e.y) < (radius + e.r) ** 2) {
+        g.dealDamage(e, this.dmg, { element: 'earth' })
+      }
+    }
   }
 }
 
@@ -168,7 +212,7 @@ export class EvoClawWeapon extends Weapon {
         e.x -= ((e.x - p.x) / d) * 130 * dt
         e.y -= ((e.y - p.y) / d) * 130 * dt
       }
-      if (doDamage) g.dealDamage(e, this.dmg)
+      if (doDamage) g.dealDamage(e, this.dmg, { element: 'metal' })
     }
   }
 
@@ -196,7 +240,7 @@ export class EvoBowWeapon extends Weapon {
       this.timer = 0
       for (const t of g.nearestEnemies(3)) {
         const ang = Math.atan2(t.y - p.y, t.x - p.x)
-        g.spawnArrow(p.x, p.y, ang, this.dmg, 4)
+        g.spawnArrow(p.x, p.y, ang, this.dmg, 4, { element: 'wood' })
       }
     }
     // 狙击
@@ -210,7 +254,7 @@ export class EvoBowWeapon extends Weapon {
       if (target) {
         this.snipeTimer = 0
         g.fx.laser(p.x, p.y, target.x, target.y)
-        g.dealDamage(target, this.dmg * 20, { forceCrit: true })
+        g.dealDamage(target, this.dmg * 20, { forceCrit: true, element: 'wood' })
       }
     }
   }
@@ -252,13 +296,13 @@ export class EvoOrbWeapon extends Weapon {
         if (!e.alive || e.orbCd > 0) continue
         if (dist2(ox, oy, e.x, e.y) < (26 + e.r) ** 2) {
           e.orbCd = 0.45
-          g.dealDamage(e, this.dmg)
+          g.dealDamage(e, this.dmg, { element: 'fire' })
           // 连锁爆炸
           const boom = 95 * p.areaMul
           g.fx.explosion(e.x, e.y, boom)
           for (const e2 of g.enemies) {
             if (!e2.alive || e2 === e) continue
-            if (dist2(e.x, e.y, e2.x, e2.y) < (boom + e2.r) ** 2) g.dealDamage(e2, this.dmg * 0.5)
+            if (dist2(e.x, e.y, e2.x, e2.y) < (boom + e2.r) ** 2) g.dealDamage(e2, this.dmg * 0.5, { element: 'fire' })
           }
           break
         }
@@ -272,11 +316,68 @@ export class EvoOrbWeapon extends Weapon {
   }
 }
 
+/** 绝对零度：八方冰暴 */
+export class EvoFrostWeapon extends Weapon {
+  readonly id = 'frost' as const
+  readonly baseDmg = 20
+
+  constructor() { super(); this.level = 3; this.evolved = true }
+  override get name(): string { return EVOLUTIONS.frost.evoName }
+
+  update(g: Game, dt: number): void {
+    const interval = 1.1 / g.player.hasteMul
+    this.timer += dt
+    if (this.timer < interval) return
+    this.timer = 0
+    const p = g.player
+    const base = Math.random() * Math.PI * 2
+    for (let i = 0; i < 8; i++) {
+      g.spawnArrow(p.x, p.y, base + (i / 8) * Math.PI * 2, this.dmg, 6, { tint: 0x8ae8ff, element: 'water' })
+    }
+  }
+}
+
+/** 山崩地裂：双重震波 */
+export class EvoQuakeWeapon extends Weapon {
+  readonly id = 'quake' as const
+  readonly baseDmg = 34
+  private second = 0
+
+  constructor() { super(); this.level = 3; this.evolved = true }
+  override get name(): string { return EVOLUTIONS.quake.evoName }
+
+  private wave(g: Game, radius: number): void {
+    const p = g.player
+    g.fx.quakeRing(p.x, p.y, radius)
+    g.shakeBump(10)
+    for (const e of g.enemies) {
+      if (e.alive && dist2(p.x, p.y, e.x, e.y) < (radius + e.r) ** 2) {
+        g.dealDamage(e, this.dmg, { element: 'earth' })
+      }
+    }
+  }
+
+  update(g: Game, dt: number): void {
+    const interval = 1.6 / g.player.hasteMul
+    this.timer += dt
+    if (this.second > 0) {
+      this.second -= dt
+      if (this.second <= 0) this.wave(g, 320 * g.player.areaMul)
+    }
+    if (this.timer < interval) return
+    this.timer = 0
+    this.wave(g, 200 * g.player.areaMul)
+    this.second = 0.3
+  }
+}
+
 export function createWeapon(id: WeaponId): Weapon {
   switch (id) {
     case 'claw': return new ClawWeapon()
     case 'bow': return new BowWeapon()
     case 'orb': return new OrbWeapon()
+    case 'frost': return new FrostWeapon()
+    case 'quake': return new QuakeWeapon()
   }
 }
 
@@ -285,6 +386,13 @@ export const FUSION_NAMES: Record<string, string> = {
   'bow+claw': '影狙·无我',
   'claw+orb': '千爪熔核',
   'bow+orb': '腐蚀之星',
+  'claw+frost': '金水·霜刃风暴',
+  'claw+quake': '金土·裂地爪狱',
+  'bow+frost': '木水·凛冬神弓',
+  'bow+quake': '木土·撼地狙杀',
+  'frost+orb': '水火·蒸汽湮灭',
+  'orb+quake': '火土·熔岩崩世',
+  'frost+quake': '水土·冻土冰河',
 }
 
 export class FusedWeapon extends Weapon {
@@ -321,5 +429,7 @@ export function createEvolvedWeapon(id: WeaponId): Weapon {
     case 'claw': return new EvoClawWeapon()
     case 'bow': return new EvoBowWeapon()
     case 'orb': return new EvoOrbWeapon()
+    case 'frost': return new EvoFrostWeapon()
+    case 'quake': return new EvoQuakeWeapon()
   }
 }
