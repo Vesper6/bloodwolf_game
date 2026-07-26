@@ -291,11 +291,13 @@ export class FusedWeapon extends Weapon {
   readonly id: WeaponId
   readonly baseDmg = 0
   readonly fusionName: string
+  readonly subIds: WeaponId[]
   private subs: Weapon[]
 
   constructor(a: Weapon, b: Weapon) {
     super()
     this.id = a.id
+    this.subIds = [a.id, b.id]
     this.level = 3
     this.evolved = true
     this.fused = true

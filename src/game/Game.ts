@@ -14,6 +14,7 @@ import { Player } from './player'
 import { Textures, makeGroundTexture, makeTextures } from './textures'
 import { FusedWeapon, Weapon, createEvolvedWeapon, createWeapon } from './weapons'
 import { getFrames, getTex } from './assets'
+import { RunSave, clearRun, loadRun, saveRun } from './persist'
 
 type GameState = 'running' | 'levelup' | 'end'
 
@@ -93,6 +94,9 @@ export class Game {
   charId: CharId = 'rega'
   moonLv = 1
   mapId: MapId = 'wasteland'
+  private persistTimer = 0
+  get bossIdxPublic(): number { return this.bossIdx }
+  get victoryAnnouncedPublic(): boolean { return this.victoryAnnounced }
   private meta: MetaData = loadMeta()
   private victoryAnnounced = false
 
@@ -134,6 +138,7 @@ export class Game {
     ;(window as unknown as Record<string, unknown>).__game = this // 调试/自动化测试入口
 
     if (net) this.bindNet(net)
+    else window.addEventListener('beforeunload', () => saveRun(this))
 
     this.app.ticker.add(() => {
       const dt = Math.min(this.app.ticker.deltaMS / 1000, 0.05)
@@ -170,6 +175,42 @@ export class Game {
     if (def.building) this.placeBuilding(def.building)
 
     document.getElementById('energy-text')!.textContent = `${def.skill.name} [空格]`
+  }
+
+  /** 从存档恢复上局进度（刷新后继续） */
+  restoreRun(d: RunSave): void {
+    this.time = d.time
+    this.kills = d.kills
+    this.totalDamage = d.totalDamage
+    this.maxHit = d.maxHit
+    this.bossIdx = d.bossIdx
+    this.victoryAnnounced = d.victoryAnnounced
+    const p = this.player
+    Object.assign(p, d.player)
+    p.pendingLevels = 0
+    // 重建武器
+    for (const w of p.weapons) w.dispose(this)
+    p.weapons = d.weapons.map(w => {
+      if (w.fused && w.subIds?.length === 2) {
+        return new FusedWeapon(createEvolvedWeapon(w.subIds[0]), createEvolvedWeapon(w.subIds[1]))
+      }
+      const inst = w.evolved ? createEvolvedWeapon(w.id) : createWeapon(w.id)
+      inst.level = w.level
+      inst.copies = w.copies
+      return inst
+    })
+    // 重建筑造物
+    for (const b of this.buildings) b.destroy(this)
+    this.buildings = d.buildings.map(b => {
+      const inst = new Building(b.id as BuildingId, this, b.x, b.y)
+      inst.level = b.level
+      inst.maxHp = inst.maxHp * b.level
+      inst.hp = b.hp
+      inst.sprite.scale.set(1 + 0.15 * (b.level - 1))
+      inst.redrawAura(this)
+      return inst
+    })
+    this.announce(`已恢复上局进度：${CHARS[this.charId].name} · ${fmtTime(d.time)}`, false, true)
   }
 
   /** 主动技能（空格），能量满释放 */
@@ -515,6 +556,10 @@ export class Game {
     this.updateChests(dt)
     this.updateBullets(dt)
     if (this.comboTimer > 0) { this.comboTimer -= dt; if (this.comboTimer <= 0) this.combo = 0 }
+    if (!this.net) {
+      this.persistTimer += dt
+      if (this.persistTimer >= 3) { this.persistTimer = 0; saveRun(this) }
+    }
     this.fx.update(dt)
     this.updateCamera()
     this.updateHUD()
@@ -1181,6 +1226,7 @@ export class Game {
   private end(victory: boolean): void {
     if (this.state === 'end') return
     this.state = 'end'
+    clearRun()
     const won = victory || this.victoryAnnounced
     const gained = grantReward(this.meta, this.kills, this.time, won, this.moonLv)
     const title = document.getElementById('end-title')!

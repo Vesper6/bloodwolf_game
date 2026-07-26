@@ -1,6 +1,7 @@
 import { CHARS, CharId, MAPS, MapId, MOON_MAX, TALENTS, WEAPON_INFO } from './core/config'
 import { buyTalent, loadMeta, talentLv } from './core/meta'
 import { loadAssets } from './game/assets'
+import { clearRun, loadRun } from './game/persist'
 import { Game } from './game/Game'
 import { Net } from './net/net'
 
@@ -96,7 +97,23 @@ async function begin(net: Net | null): Promise<void> {
   if (net) history.replaceState(null, '', `?room=${net.roomId}`)
 }
 
-document.getElementById('start-btn')!.addEventListener('click', () => begin(null))
+document.getElementById('start-btn')!.addEventListener('click', () => { clearRun(); begin(null) })
+
+// 继续上局（刷新/关页后的进度恢复）
+const savedRun = loadRun()
+if (savedRun) {
+  const btn = document.createElement('button')
+  const mm = Math.floor(savedRun.time / 60), ss = Math.floor(savedRun.time % 60)
+  btn.textContent = `继续上局 · Lv${savedRun.player.level} ${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
+  btn.style.marginTop = '10px'
+  document.getElementById('start-btn')!.after(btn)
+  btn.addEventListener('click', async () => {
+    startScreen.classList.add('hidden')
+    await loadAssets()
+    const g = new Game(null, savedRun.charId, savedRun.moonLv, savedRun.mapId)
+    g.restoreRun(savedRun)
+  })
+}
 
 document.getElementById('host-btn')!.addEventListener('click', async () => {
   mpStatus.textContent = '正在创建房间…'
