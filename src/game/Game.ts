@@ -132,8 +132,11 @@ export class Game {
     this.world.addChild(this.fx.layer)
 
     this.setupCharacter()
-    const pf = getFrames('player_' + this.charId)
-    if (pf) this.player.setSkin(pf)
+    this.player.setSkin(getFrames('player_' + this.charId) ?? this.tex.playerFrames)
+    const pShadow = new Sprite(this.tex.shadow)
+    pShadow.anchor.set(0.5)
+    pShadow.position.set(0, 15)
+    this.player.sprite.addChildAt(pShadow, 0)
     this.el.hud.classList.remove('hidden')
     ;(window as unknown as Record<string, unknown>).__game = this // 调试/自动化测试入口
 
@@ -391,8 +394,8 @@ export class Game {
       seen.add(id)
       let e = this.enemyById.get(id)
       if (!e) {
-        e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind])
-        e.setSkin(getFrames('enemy_' + kind) ?? [this.tex.enemy[kind]])
+        e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind], this.tex.shadow)
+        e.setSkin(getFrames('enemy_' + kind) ?? this.tex.enemyFrames[kind])
         const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, this.time / 60)
         e.init(kind, x, y, hpMul, 1 + (this.time / 60) * CFG.enemyDmgGrowthPerMin)
         e.netId = id
@@ -424,6 +427,7 @@ export class Game {
     e.alive = false
     this.enemyById.delete(e.netId)
     this.kills++
+    this.fx.deathBurst(e.x, e.y, ENEMIES[e.kind].color)
     this.player.energy = Math.min(CFG.rage.energyMax, this.player.energy + CFG.rage.energyPerKill)
     if (this.player.tags.blood >= 3) this.player.heal(1)
     if (e.isBoss || this.boss === e) {
@@ -642,8 +646,8 @@ export class Game {
   }
 
   private spawnEnemy(kind: EnemyKind): Enemy | null {
-    const e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind])
-    e.setSkin(getFrames('enemy_' + kind) ?? [this.tex.enemy[kind]])
+    const e = this.enemyPool.pop() ?? new Enemy(this.tex.enemy[kind], this.tex.shadow)
+    e.setSkin(getFrames('enemy_' + kind) ?? this.tex.enemyFrames[kind])
     const min = this.time / 60
     // 血月等级压制（GDD 8.3）：血量全额倍率，伤害温和递增
     const hpMul = Math.pow(CFG.enemyHpGrowthPerMin, min) * moonMul(this.moonLv)
@@ -692,6 +696,10 @@ export class Game {
         e.x += (dx / d) * e.speed * frenzy * dt
         e.y += (dy / d) * e.speed * frenzy * dt
         if (this.victoryAnnounced) e.sprite.tint = 0xff8080
+      }
+      if (e.hitPulse > 0.01) {
+        e.hitPulse *= Math.exp(-10 * dt)
+        e.sprite.scale.set(1 + 0.22 * e.hitPulse)
       }
       e.sprite.position.set(e.x, e.y)
 
@@ -877,6 +885,7 @@ export class Game {
     const dmg = base * mul * (crit ? critDmg / 100 : 1)
 
     e.hp -= dmg
+    e.hitPulse = 1
     this.totalDamage += dmg
     if (dmg > this.maxHit) this.maxHit = dmg
     this.fx.damageText(e.x, e.y - e.r, dmg, crit)
@@ -904,6 +913,7 @@ export class Game {
   private killEnemy(e: Enemy): void {
     e.alive = false
     this.kills++
+    this.fx.deathBurst(e.x, e.y, ENEMIES[e.kind].color)
     this.onCombo()
     // 精英词缀结算
     if (e.affix === 'split') {
@@ -967,6 +977,7 @@ export class Game {
     const range2 = p.pickupRange ** 2
     for (let i = this.gems.length - 1; i >= 0; i--) {
       const g = this.gems[i]
+      g.sprite.scale.set(1 + 0.13 * Math.sin(this.time * 6 + g.x * 0.05))
       const d2 = dist2(g.x, g.y, p.x, p.y)
       if (!g.attracted && d2 < range2) g.attracted = true
       if (g.attracted) {

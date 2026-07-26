@@ -3,12 +3,16 @@ import { BuildingId, ENEMIES, EnemyKind } from '../core/config'
 
 export interface Textures {
   player: Texture
+  /** 程序化 4 帧行走动画（无外部素材时的默认动画） */
+  playerFrames: Texture[]
   gem: Texture
   gemBig: Texture
   arrow: Texture
   orb: Texture
   chest: Texture
+  shadow: Texture
   enemy: Record<EnemyKind, Texture>
+  enemyFrames: Record<EnemyKind, Texture[]>
   building: Record<BuildingId, Texture>
 }
 
@@ -20,17 +24,30 @@ export function makeTextures(app: Application): Textures {
     return t
   }
 
-  // 玩家：狼形剪影（深灰身体 + 狼耳 + 猩红双目）
-  const pg = new Graphics()
-  pg.beginFill(0x3c3c4e)
-  pg.drawCircle(0, 0, 16)
-  pg.moveTo(-14, -8); pg.lineTo(-20, -24); pg.lineTo(-4, -13); pg.closePath()
-  pg.moveTo(14, -8); pg.lineTo(20, -24); pg.lineTo(4, -13); pg.closePath()
-  pg.endFill()
-  pg.beginFill(0xff2d2d)
-  pg.drawCircle(-6, -3, 2.6)
-  pg.drawCircle(6, -3, 2.6)
-  pg.endFill()
+  // 玩家：狼形剪影（深灰身体 + 狼耳 + 猩红双目），4 帧行走循环（上下起伏+耳朵摆动）
+  const playerFrame = (dy: number, ear: number) => {
+    const pg = new Graphics()
+    pg.beginFill(0x1a1a24, 0.001) // 透明占位保证各帧同尺寸
+    pg.drawRect(-22, -26, 44, 46)
+    pg.endFill()
+    pg.beginFill(0x3c3c4e)
+    pg.drawEllipse(0, dy, 16, 16 - Math.abs(dy) * 0.6)
+    pg.moveTo(-14, -8 + dy); pg.lineTo(-20 + ear, -24 + dy); pg.lineTo(-4, -13 + dy); pg.closePath()
+    pg.moveTo(14, -8 + dy); pg.lineTo(20 + ear, -24 + dy); pg.lineTo(4, -13 + dy); pg.closePath()
+    pg.endFill()
+    pg.beginFill(0xff2d2d)
+    pg.drawCircle(-6, -3 + dy, 2.6)
+    pg.drawCircle(6, -3 + dy, 2.6)
+    pg.endFill()
+    return gen(pg)
+  }
+  const playerFrames = [playerFrame(0, 0), playerFrame(-2.5, 2), playerFrame(0, 0), playerFrame(2, -2)]
+
+  // 通用投影（椭圆软阴影）
+  const shg = new Graphics()
+  shg.beginFill(0x000000, 0.32)
+  shg.drawEllipse(0, 0, 16, 6)
+  shg.endFill()
 
   // 经验宝石：菱形
   const gg = new Graphics()
@@ -57,32 +74,43 @@ export function makeTextures(app: Application): Textures {
   og.beginFill(0xffd7a0); og.drawCircle(-2, -2, 3.5); og.endFill()
 
   const enemy = {} as Record<EnemyKind, Texture>
+  const enemyFrames = {} as Record<EnemyKind, Texture[]>
   for (const kind of Object.keys(ENEMIES) as EnemyKind[]) {
     const def = ENEMIES[kind]
-    const eg = new Graphics()
-    eg.lineStyle(2, 0x000000, 0.45)
-    eg.beginFill(def.color)
-    eg.drawCircle(0, 0, def.r)
-    eg.endFill()
-    if (kind === 'elite' || kind === 'boss') {
-      // 精英/Boss 加尖刺轮廓
-      eg.beginFill(def.color)
-      const spikes = 8
-      for (let i = 0; i < spikes; i++) {
-        const a = (i / spikes) * Math.PI * 2
-        const r0 = def.r, r1 = def.r + 8
-        eg.moveTo(Math.cos(a - 0.18) * r0, Math.sin(a - 0.18) * r0)
-        eg.lineTo(Math.cos(a) * r1, Math.sin(a) * r1)
-        eg.lineTo(Math.cos(a + 0.18) * r0, Math.sin(a + 0.18) * r0)
-        eg.closePath()
-      }
+    // 每种怪 4 帧：呼吸/爬行式挤压拉伸（squash & stretch）
+    const frame = (sq: number) => {
+      const eg = new Graphics()
+      const pad = def.r + 10
+      eg.beginFill(0x000000, 0.001)
+      eg.drawRect(-pad, -pad, pad * 2, pad * 2)
       eg.endFill()
+      eg.lineStyle(2, 0x000000, 0.45)
+      eg.beginFill(def.color)
+      eg.drawEllipse(0, def.r * (1 - sq) * 0.5, def.r * (2 - sq) * 0.72, def.r * sq)
+      eg.endFill()
+      if (kind === 'elite' || kind === 'boss') {
+        // 精英/Boss 加尖刺轮廓
+        eg.beginFill(def.color)
+        const spikes = 8
+        for (let i = 0; i < spikes; i++) {
+          const a = (i / spikes) * Math.PI * 2
+          const r0 = def.r * sq, r1 = def.r * sq + 8
+          eg.moveTo(Math.cos(a - 0.18) * r0, Math.sin(a - 0.18) * r0)
+          eg.lineTo(Math.cos(a) * r1, Math.sin(a) * r1)
+          eg.lineTo(Math.cos(a + 0.18) * r0, Math.sin(a + 0.18) * r0)
+          eg.closePath()
+        }
+        eg.endFill()
+      }
+      eg.beginFill(0xff2020)
+      const ey = -def.r * 0.2 * sq + def.r * (1 - sq) * 0.5
+      eg.drawCircle(-def.r * 0.3, ey, Math.max(2, def.r * 0.12))
+      eg.drawCircle(def.r * 0.3, ey, Math.max(2, def.r * 0.12))
+      eg.endFill()
+      return gen(eg)
     }
-    eg.beginFill(0xff2020)
-    eg.drawCircle(-def.r * 0.3, -def.r * 0.2, Math.max(2, def.r * 0.12))
-    eg.drawCircle(def.r * 0.3, -def.r * 0.2, Math.max(2, def.r * 0.12))
-    eg.endFill()
-    enemy[kind] = gen(eg)
+    enemyFrames[kind] = [frame(1), frame(0.88), frame(1), frame(1.1)]
+    enemy[kind] = enemyFrames[kind][0]
   }
 
   // 血月宝箱
@@ -116,13 +144,16 @@ export function makeTextures(app: Application): Textures {
   sg.beginFill(0x6fe8ff); sg.drawCircle(0, -8, 5); sg.endFill()
 
   return {
-    player: gen(pg),
+    player: playerFrames[0],
+    playerFrames,
     gem: gen(gg),
     gemBig: gen(gb),
     arrow: gen(ag),
     orb: gen(og),
     chest: gen(cg),
+    shadow: gen(shg),
     enemy,
+    enemyFrames,
     building: { turret: gen(tg), totem: gen(og2), siphon: gen(sg) },
   }
 }

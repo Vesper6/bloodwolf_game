@@ -18,10 +18,18 @@ export class Enemy {
   poisonTick = 0
   /** 精英词缀：split=分裂 boom=自爆 magnet=磁力 */
   affix: 'split' | 'boom' | 'magnet' | null = null
+  /** 受击挤压脉冲（0~1，衰减） */
+  hitPulse = 0
+  private shadow: Sprite | null = null
 
-  constructor(tex: Texture) {
+  constructor(tex: Texture, shadowTex?: Texture) {
     this.sprite = new AnimatedSprite([tex])
     this.sprite.anchor.set(0.5)
+    if (shadowTex) {
+      this.shadow = new Sprite(shadowTex)
+      this.shadow.anchor.set(0.5)
+      this.sprite.addChildAt(this.shadow, 0)
+    }
   }
 
   /** 换肤：支持序列帧动画（美术素材替换适配） */
@@ -48,6 +56,12 @@ export class Enemy {
     this.poison = 0
     this.poisonTick = 0
     this.affix = null
+    this.hitPulse = 0
+    if (this.shadow) {
+      this.shadow.position.set(0, def.r * 0.9)
+      this.shadow.scale.set(def.r / 14)
+    }
+    this.sprite.scale.set(1)
     this.tx = x; this.ty = y
     this.netId = 0
     this.sprite.position.set(x, y)

@@ -3,6 +3,7 @@ import { fmtNum } from '../core/utils'
 
 interface FloatText { t: Text; life: number; max: number }
 interface Slash { g: Graphics; life: number }
+interface Particle { g: Graphics; life: number; vx: number; vy: number }
 
 /** 飘字与斩击特效（对象池） */
 export class Fx {
@@ -10,6 +11,7 @@ export class Fx {
   private pool: Text[] = []
   private texts: FloatText[] = []
   private slashes: Slash[] = []
+  private particles: Particle[] = []
 
   damageText(x: number, y: number, dmg: number, crit: boolean): void {
     if (this.texts.length > 90) return // 池上限，避免刷字卡顿
@@ -94,6 +96,22 @@ export class Fx {
     this.slashes.push({ g, life: 0.5 })
   }
 
+  /** 死亡爆裂粒子（按怪物颜色） */
+  deathBurst(x: number, y: number, color: number): void {
+    if (this.particles.length > 120) return
+    for (let i = 0; i < 6; i++) {
+      const g = new Graphics()
+      g.beginFill(color, 0.9)
+      g.drawCircle(0, 0, 2 + Math.random() * 2.5)
+      g.endFill()
+      g.position.set(x, y)
+      const a = Math.random() * Math.PI * 2
+      const sp = 90 + Math.random() * 150
+      this.layer.addChild(g)
+      this.particles.push({ g, life: 0.42, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp })
+    }
+  }
+
   update(dt: number): void {
     for (let i = this.texts.length - 1; i >= 0; i--) {
       const ft = this.texts[i]
@@ -106,6 +124,15 @@ export class Fx {
         this.pool.push(ft.t)
         this.texts.splice(i, 1)
       }
+    }
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const pt = this.particles[i]
+      pt.life -= dt
+      pt.g.x += pt.vx * dt
+      pt.g.y += pt.vy * dt
+      pt.vx *= 0.92; pt.vy *= 0.92
+      pt.g.alpha = Math.max(0, pt.life / 0.42)
+      if (pt.life <= 0) { pt.g.destroy(); this.particles.splice(i, 1) }
     }
     for (let i = this.slashes.length - 1; i >= 0; i--) {
       const s = this.slashes[i]
